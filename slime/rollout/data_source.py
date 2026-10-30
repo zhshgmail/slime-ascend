@@ -14,6 +14,54 @@ from slime.utils.types import Sample
 logger = logging.getLogger(__name__)
 
 
+def _encode_buffer_value(value):
+    """Keep buffered Sample state compatible with weights-only torch.load."""
+    from PIL import Image
+
+    if isinstance(value, Image.Image):
+        pixels = torch.frombuffer(bytearray(value.tobytes()), dtype=torch.uint8).clone()
+        return {
+            "__slime_buffer_type__": "image",
+            "mode": value.mode,
+            "size": list(value.size),
+            "pixels": pixels,
+            "info": _encode_buffer_value(value.info),
+            "format": value.format,
+        }
+    if isinstance(value, dict):
+        return {
+            "__slime_buffer_type__": "dict",
+            "items": [[_encode_buffer_value(k), _encode_buffer_value(v)] for k, v in value.items()],
+        }
+    if isinstance(value, (list, tuple)):
+        return {
+            "__slime_buffer_type__": "tuple" if isinstance(value, tuple) else "list",
+            "items": [_encode_buffer_value(v) for v in value],
+        }
+    if value is None or isinstance(value, (str, int, float, bool, bytes, torch.Tensor)):
+        return value
+    raise TypeError(f"Unsupported buffered Sample value: {type(value).__name__}")
+
+
+def _decode_buffer_value(value):
+    if not isinstance(value, dict):
+        return value
+    kind = value.get("__slime_buffer_type__")
+    if kind == "dict":
+        return {_decode_buffer_value(k): _decode_buffer_value(v) for k, v in value["items"]}
+    if kind in ("list", "tuple"):
+        items = [_decode_buffer_value(v) for v in value["items"]]
+        return tuple(items) if kind == "tuple" else items
+    if kind == "image":
+        from PIL import Image
+
+        image = Image.frombytes(value["mode"], tuple(value["size"]), value["pixels"].numpy().tobytes())
+        image.info.update(_decode_buffer_value(value["info"]))
+        image.format = value["format"]
+        return image
+    raise ValueError(f"Unsupported buffered Sample encoding: {kind!r}")
+
+
 class DataSource(abc.ABC):
     @abc.abstractmethod
     def get_samples(self, num_samples: int) -> list[list[Sample]]:
@@ -131,6 +179,12 @@ class RolloutDataSource(DataSource):
             "sample_index": self.sample_index,
             "metadata": self.metadata,
         }
+        if hasattr(self, "buffer"):
+            state_dict["buffer_schema_version"] = 1
+            state_dict["buffer"] = [
+                [_encode_buffer_value(sample.to_dict()) for sample in group]
+                for group in self.buffer
+            ]
         path = os.path.join(self.args.save, f"rollout/global_dataset_state_dict_{rollout_id}.pt")
         os.makedirs(os.path.dirname(path), exist_ok=True)
         torch.save(state_dict, path)
@@ -150,11 +204,28 @@ class RolloutDataSource(DataSource):
         logger.info(f"load metadata from {path}")
         logger.info(f"load metadata: {self.metadata}")
         state_dict = torch.load(path)
+        restored_buffer = None
+        if hasattr(self, "buffer"):
+            version = state_dict.get("buffer_schema_version")
+            if version not in (None, 1):
+                raise ValueError(f"Unsupported rollout buffer schema: {version}")
+            # Legacy checkpoints contain counters only; no lost samples can be reconstructed.
+            restored_buffer = [
+                [Sample.from_dict(_decode_buffer_value(sample)) for sample in group]
+                for group in state_dict.get("buffer", [])
+            ]
+            for group in restored_buffer:
+                assert len(group) == self.args.n_samples_per_prompt, (
+                    f"buffer group size {len(group)} != n_samples_per_prompt "
+                    f"{self.args.n_samples_per_prompt}"
+                )
         self.sample_offset = state_dict.get("sample_offset", 0)
         self.epoch_id = state_dict.get("epoch_id", 0)
         self.sample_group_index = state_dict.get("sample_group_index", 0)
         self.sample_index = state_dict.get("sample_index", 0)
         self.metadata = state_dict.get("metadata", {})
+        if restored_buffer is not None:
+            self.buffer = restored_buffer
 
         if self.args.rollout_global_dataset and self.args.rollout_shuffle and self.dataset is not None:
             self.dataset.shuffle(self.epoch_id)

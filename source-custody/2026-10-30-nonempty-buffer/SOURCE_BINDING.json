@@ -1,0 +1,17 @@
+{
+  "schema": "autoport.candidate-source-custody/1",
+  "upstream": "https://gitcode.com/Ascend/slime-ascend.git",
+  "originalCommitLabel": "8216e89e69371d21c9871aad7d69f638ce44316e",
+  "ownedMatchingSourceSnapshot": "2ac6f6325a00e32f9215001acc5e841268d93d0c",
+  "originalTree": "0ebc3bf796d0de1f6caacc63d053e4541c8e0ad6",
+  "history": "Known matching original source snapshot; no original Git-history reconstruction claimed",
+  "changedFile": "slime/rollout/data_source.py",
+  "beforeSHA256": "446595578aff88fac1637b8956a245853db1167e7964896bbab2fff61b1db616",
+  "afterSHA256": "beebaf7772f525d1691606082ce0c27a0e17eaa3d74cf58c695f6e0afd28a096",
+  "patchSHA256": "f14548c8cf2b405c09fe4b7d67ee6f2cb758d9e63e47d7570ec9b5d1badedb98",
+  "candidateState": "PREPARED_ONLY; no tests/compile/import/changed-code execution before offhost preservation",
+  "purpose": "Preserve ordered nonempty RolloutDataSourceWithBuffer Sample state using version1 plain tensor/scalar/PIL codec; actualbehavior and compatibility remain unvalidated",
+  "legacyBoundary": "Original counter-only checkpoints cannot reconstruct lost historical samples; no full training/model/optimizer/device recovery claim",
+  "consumerScope": "Next authorized original real-generatedSample save/coldload then completefield/image/tensor/order/counter and malformed/missing state checks; no invented reward/training payload",
+  "publicationScope": "Dependency sourcefile and sanitized provenance/patch only; no local paths, rawSample/model/checkpoint/credentials"
+}
