@@ -30,3 +30,35 @@ Selected original distrib_optimizer.py line1121 allocates torch.cat while world3
 
 ## Withdrawn complete-state verdict
 Fresh independent normal-CLI counterexamples still make64f accept incomplete model values despite full separate inventory, unrelated optimizer metadata and tiny RNG state. Complete-state acceptance is therefore withdrawn. The step reader now reports only `reported_sections_equal`, keeps `all_complete_state_equal=false`, and returns2 for equal-but-unqualified input. The DCP reader preserves generic persisted-state equality; requested complete-original value mode returns2 and never complete=true. Errors remain failures. This is a truthful scope restriction, NOT full completeness repair, native qualification or weakened original acceptance. Exact binding of actual model value names/dtypes/shards to inventory and full original optimizer/RNG content remains an open repair.
+
+## Value-bound original save adapter (unqualified native integration)
+
+`sharded_values.collect_original` calls selected original MCore
+`generate_state_dict` using the original save metadata, actual model,
+optimizer, scheduler and original `torch_dist` RNG object. It then calls original
+`save_preprocess` to expand the actual factories. Every tensor record owns both
+its actual value hash/dtype/local shape and the SAME original ShardedTensor's
+key/global shape/offset. There is no separate model inventory used to validate an
+unrelated model digest. Optimizer parameter/master/moment records come from the
+original optimizer's own save-state interface, including its actual semantic
+keys. Original checkpointing/mapping/preprocess source files must be present in
+an externally authenticated source contract and match their actual file hashes.
+
+The new hook path is
+`tools.cold_restore.sharded_values.before_train_step`. It preserves the original
+iteration-zero split tracker and original RNG object-list serialization as a
+small independently decodable file. It never manufactures device RNG bytes.
+`verify_tensor_coverage` requires actual value-bearing records for every requested
+key/chunk in authenticated DCP metadata, with exact dtype/shape/chunk coordinates
+and matching replicas. Its success concerns ONLY the explicitly requested tensor
+set, and ALWAYS leaves `all_complete_state_equal=false`.
+
+Native invocation, full original model/optimizer capture, device RNG API/extent
+validation and paired cold restore versus uninterrupted control are NOT_RUN.
+No complete-state verdict is re-enabled by this adapter. Existing e0e2915
+withdrawal remains. Full verification must independently consume actual saved
+and restored values, all optimizer semantic state and raw RNG content; matching
+capture JSON is insufficient. Existing original-getter peak memory estimates
+(including temporary concatenations) remain; this path is not memory-qualified
+by its small CPU tests. This is a readback observer and cannot supply performance
+results. No training math, model implementation or original argv is changed.
