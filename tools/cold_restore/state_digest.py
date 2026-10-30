@@ -43,6 +43,9 @@ def before_train_step(args,rollout_id,step_id,model,optimizer,opt_param_schedule
     through the selected original DP-zero getter, scheduler and original RNG API.
     Readback may synchronize work. It is not a performance measurement.
     """
+    # Only the paired post-update boundary is observed. Before the first update,
+    # original distributed optimizer moments/master states may be lazy.
+    if rollout_id!=1 or step_id!=0: return
     from megatron.core import mpu
     from megatron.training.checkpointing import get_rng_state
     assert args.tensor_model_parallel_size==4 and args.data_parallel_size==1
