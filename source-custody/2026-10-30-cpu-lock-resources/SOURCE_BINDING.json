@@ -1,0 +1,12 @@
+{
+  "status": "PREPARED_CANDIDATE_NOT_VALIDATED",
+  "base": "b8fdd9631b9ff9261f8fc5fda5c163321362e1b5",
+  "upstream": "Ascend/slime-ascend@8216e89e69371d21c9871aad7d69f638ce44316e",
+  "path": "slime/ray/rollout.py",
+  "beforeSHA256": "696b65b37727f5faae7481a84aa8196cc3113d445b41f5f4fd8ce24c469190db",
+  "afterSHA256": "53e973090732e19078960e9130822d5e0e05f10a55609405d0c094d5c2382e6e",
+  "change": "Only omit Ray reserved GPU custom resource for CPU lock; num_gpus=0 retained, original NPU custom resource behavior retained",
+  "originalFailure": "Ray2.52.1 realCPU RolloutManager constructor rejects resources GPU0 beforepayload; not a provenNPU defect",
+  "otherRepairInBase": "Nonemptybuffer state codec candidateb8fdd963, own priorCPU qualification separately retained",
+  "noCredentialsLocalPathsOrLargeArtifacts": true
+}

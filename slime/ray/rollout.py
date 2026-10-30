@@ -401,7 +401,8 @@ class RolloutManager:
 
         init_tracking(args, primary=False)
         device_name = "NPU" if is_npu() else "GPU"
-        self.rollout_engine_lock = Lock.options(num_cpus=1, num_gpus=0, resources={device_name: 0}).remote()  # pylint: disable=no-member
+        lock_resources = {device_name: 0} if device_name != "GPU" else {}
+        self.rollout_engine_lock = Lock.options(num_cpus=1, num_gpus=0, resources=lock_resources).remote()  # pylint: disable=no-member
         self.rollout_id = -1
 
         self._health_monitors = []
