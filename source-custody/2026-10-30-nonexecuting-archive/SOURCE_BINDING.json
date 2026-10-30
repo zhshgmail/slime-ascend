@@ -1,0 +1,36 @@
+{
+  "schema": "autoport.nonexecuting-source-archive/1",
+  "dependency": "slime",
+  "actualUpstream": "https://gitcode.com/Ascend/slime-ascend.git",
+  "ownedFork": "https://github.com/zhshgmail/slime-ascend.git",
+  "archivalBranchOnly": true,
+  "patchApplied": false,
+  "originalRuntimeSourceChanged": false,
+  "runtimeQualificationClaimed": false,
+  "noSourceBaseSubstitution": true,
+  "sourceArtifacts": [
+    {
+      "source": "docs/examples/slime-original-a2-first-use/current-8d5/patches/slime_model.regions.after.py.patch",
+      "productCommit": "aa04e0bb85591dca879379a21df3f6fb64558917",
+      "productBlob": "f81cac53decae7f85082225e13ffc1db12153e6b",
+      "sha256": "f654b555eacb5e16c8fbf04a6650f15eb0623c509544a0038e5193a4ffe1a781",
+      "bytes": 1225,
+      "publicRepository": "https://gitcode.com/zhengshencn_hwca/npu-autoport-pipeline.git",
+      "workingBytesEqualCommit": true,
+      "knownPublishedProductCommit": "0a731b3a778dd7d6659a1cfbb99bba8af8bd42c3",
+      "knownPublishedProductBlob": "f81cac53decae7f85082225e13ffc1db12153e6b",
+      "knownPublishedBytesMatch": true
+    }
+  ],
+  "sourceBindings": [
+    {
+      "target": "slime/backends/megatron_utils/model.py",
+      "before": "b5d24a3ff181a38a1bcf77b135ec20197f0dbbe10c86d67e7eebe43c31fdff0c",
+      "after": "0c465606fa331f14d84d2ce8aceff0ed4857e4d1b2156dc7791c93a0aa3f875d",
+      "state": "NOT_APPLIED; canonical8216before79590904 does not match. Need actual beforeimage/prerequisite source.",
+      "originalConsumer": "Published original Slime current8d5 checkpoint continuation, not executed by archival branch."
+    }
+  ],
+  "beforeAfterState": "Published source-pins retained; UNKNOWN stays UNKNOWN. Artifact bytes remotely preserved independently of source-base/history readiness.",
+  "originalAcceptance": "WholeSlime/MCoreTE0/2, original criteria/failures/cumulative168h preserved"
+}

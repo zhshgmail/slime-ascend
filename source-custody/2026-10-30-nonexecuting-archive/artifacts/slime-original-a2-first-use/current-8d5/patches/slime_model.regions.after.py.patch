@@ -1,0 +1,29 @@
+--- a/slime/backends/megatron_utils/model.py
++++ b/slime/backends/megatron_utils/model.py
+@@ -991,18 +991,22 @@
+         model, optimizer, opt_param_scheduler = setup_model_and_optimizer(args, role)
+         model[0].role = role
+         reinit_critic_output_layer = _critic_output_layer_needs_reinit(args, model, role)
+-        clear_memory()
++    clear_memory()
++    with (torch_memory_saver.region(tag="default", enable_cpu_backup=True)
++          if args.offload_train else nullcontext()):
+         iteration, _ = load_checkpoint(
+             model,
+             optimizer,
+             opt_param_scheduler,
+             checkpointing_context={},
+             skip_load_to_model_and_opt=False,
++            # Keep cache reclamation outside the active TMS allocator region.
++            defer_empty_cache=args.offload_train,
+         )
+         if reinit_critic_output_layer:
+             _reinitialize_critic_output_layer(model)
+             if (args.fp16 or args.bf16) and optimizer is not None:
+                 optimizer.reload_model_params()
+-        clear_memory()
+-
+-        return model, optimizer, opt_param_scheduler, iteration
++    clear_memory()
++
++    return model, optimizer, opt_param_scheduler, iteration
