@@ -1,0 +1,139 @@
+import os
+
+import slime.utils.misc as U
+from slime.utils.external_utils.command_utils import execute_train_npu
+
+TRAIN_BACKEND = os.environ.get("SLIME_SCRIPT_TRAIN_BACKEND", "megatron").lower()
+if TRAIN_BACKEND not in {"megatron"}:
+    raise ValueError(f"Unsupported TRAIN_BACKEND: {TRAIN_BACKEND}")
+
+DATASET_NAME = "VeraIsHere/geo3k_imgurl_processed"
+# Replace with actual dataset path
+DATA_ROOT = "/path/to/datasets/geo3k_imgurl_processed"
+TRAIN_DATA_PATH = os.path.join(DATA_ROOT, "train.parquet")
+
+
+def execute():
+    # Replace with actual checkpoint path
+    ckpt_args = f"--hf-checkpoint /path/to/model/checkpoints/Qwen3.5-9B/ "
+
+    wandb_api_key = os.environ.get("WANDB_API_KEY")
+    wandb_args = (
+        (
+            "--use-wandb "
+            "--wandb-project slime-dev "
+            "--wandb-group geo3k_vlm_multi_turn "
+            f"--wandb-key '{wandb_api_key}' "
+        )
+        if wandb_api_key
+        else ""
+    )
+
+    rollout_args = (
+        f"--prompt-data {TRAIN_DATA_PATH} "
+        "--input-key problem "
+        "--label-key answer "
+        '--multimodal-keys \'{"image": "images"}\' '
+        "--rm-type math "
+        "--apply-chat-template "
+        "--custom-generate-function-path examples.geo3k_vlm_multi_turn.rollout.generate "
+        "--custom-config-path examples/geo3k_vlm_multi_turn/geo3k_vlm_multi_turn_config.yaml "
+        "--rollout-shuffle "
+        "--num-rollout 3000 "
+        "--rollout-batch-size 32 "
+        "--n-samples-per-prompt 8 "
+        "--rollout-max-response-len 4096 "
+        "--rollout-temperature 1 "
+        "--global-batch-size 256 "
+    )
+
+    grpo_args = (
+        "--advantage-estimator grpo "
+        "--kl-loss-coef 0.00 "
+        "--kl-loss-type low_var_kl "
+        "--kl-coef 0.00 "
+        "--entropy-coef 0.00 "
+        "--eps-clip 0.2 "
+        "--eps-clip-high 0.28 "
+        "--use-kl-loss "
+        "--use-tis "
+    )
+
+    optimizer_args = (
+        "--optimizer adam "
+        "--lr 1e-6 "
+        "--lr-decay-style constant "
+        "--weight-decay 0.1 "
+        "--adam-beta1 0.9 "
+        "--adam-beta2 0.98 "
+
+        "--optimizer-cpu-offload "
+        "--overlap-cpu-optimizer-d2h-h2d "
+        "--use-precision-aware-optimizer "
+    )
+
+    sglang_args = (
+        "--rollout-num-gpus-per-engine 2 "
+        "--sglang-mem-fraction-static 0.7 "
+        f"--sglang-cuda-graph-bs {' '.join(map(str, [4, 8] + list(range(16, 257, 8))))} "
+        "--sglang-device npu "
+        "--sglang-disable-radix-cache "
+        "--sglang-chunked-prefill-size 32768 "
+        "--sglang-max-prefill-tokens 4000 "
+        "--sglang-max-total-tokens 327680 "
+    )
+
+    megatron_args = (
+        "--train-backend megatron "
+        f"--load /path/to/model/checkpoints/Qwen3.5-9B/ "
+        f"--ref-load /path/to/model/checkpoints/Qwen3.5-9B/ "
+        "--tensor-model-parallel-size 2 "
+        "--sequence-parallel "
+        "--pipeline-model-parallel-size 1 "
+        "--context-parallel-size 1 "
+        "--expert-model-parallel-size 1 "
+        "--expert-tensor-parallel-size 1 "
+        "--attention-dropout 0.0 "
+        "--hidden-dropout 0.0 "
+        "--accumulate-allreduce-grads-in-fp32 "
+        "--attention-softmax-in-fp32 "
+        "--attention-backend flash "
+        "--megatron-to-hf-mode bridge "
+        # Packing is not supported for GDN currently
+        "--qkv-format bshd "
+        "--micro-batch-size 1 "
+    )
+
+    misc_args = (
+        "--actor-num-nodes 1 "
+        f"--actor-num-gpus-per-node 8 "
+        f"--rollout-num-gpus 8 "
+        "--use-flash-attn "
+    )
+
+    backend_args = megatron_args
+    megatron_model_type = "qwen3.5-9B"
+    os.environ["MODEL_ARGS_ROTARY_BASE"] = "5000000"
+
+    train_args = (
+        f"{ckpt_args} "
+        f"{rollout_args} "
+        f"{optimizer_args} "
+        f"{grpo_args} "
+        f"{sglang_args} "
+        f"{backend_args} "
+        f"{misc_args} "
+        f"{wandb_args} "
+    )
+
+    execute_train_npu(
+        train_args=train_args,
+        megatron_model_type=megatron_model_type,
+        train_script="train_async.py",
+        extra_env_vars=({"WANDB_API_KEY": os.environ["WANDB_API_KEY"]} if os.environ.get("WANDB_API_KEY") else {}),
+    )
+
+if __name__ == "__main__": 
+    execute()
+
+

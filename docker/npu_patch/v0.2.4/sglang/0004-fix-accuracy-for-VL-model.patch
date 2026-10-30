@@ -1,0 +1,37 @@
+From 5398596869f76da61741077aaa2a421fad278264 Mon Sep 17 00:00:00 2001
+From: xiazhahe <1479989397@qq.com>
+Date: Sat, 30 May 2026 15:57:59 +0800
+Subject: [PATCH] fix accuracy for VL model
+
+---
+ python/sglang/srt/models/qwen3.py     | 1 -
+ python/sglang/srt/models/qwen3_moe.py | 1 -
+ 2 files changed, 2 deletions(-)
+
+diff --git a/python/sglang/srt/models/qwen3.py b/python/sglang/srt/models/qwen3.py
+index 7e557a8d5..d829cdd2d 100644
+--- a/python/sglang/srt/models/qwen3.py
++++ b/python/sglang/srt/models/qwen3.py
+@@ -283,7 +283,6 @@ class Qwen3Attention(nn.Module):
+             save_kv_cache = False
+         elif (
+             not _is_npu
+-            or forward_batch.forward_mode.is_extend_or_draft_extend_or_mixed()
+         ):
+             q, k, v = self.forward_prepare_native(
+                 positions=positions,
+diff --git a/python/sglang/srt/models/qwen3_moe.py b/python/sglang/srt/models/qwen3_moe.py
+index 912891b6a..83563c211 100644
+--- a/python/sglang/srt/models/qwen3_moe.py
++++ b/python/sglang/srt/models/qwen3_moe.py
+@@ -657,7 +657,6 @@ class Qwen3MoeAttention(nn.Module):
+             return hidden_states, forward_batch, None
+         if (
+             not _is_npu
+-            or forward_batch.forward_mode.is_extend_or_draft_extend_or_mixed()
+         ):
+             return self.forward_prepare_native(
+                 positions=positions,
+-- 
+2.50.1.windows.1
+

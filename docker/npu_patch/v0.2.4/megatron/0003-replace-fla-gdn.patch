@@ -1,0 +1,28 @@
+From 3cab85b7c44287c5f2089a44031ef6f68cc4d7f2 Mon Sep 17 00:00:00 2001
+From: cjy0x <chenjunyi10@huawei.com>
+Date: Sat, 16 May 2026 22:30:50 +0800
+Subject: [PATCH] replace fla gdn
+
+Signed-off-by: cjy0x <chenjunyi10@huawei.com>
+---
+ megatron/core/ssm/gated_delta_net.py | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/megatron/core/ssm/gated_delta_net.py b/megatron/core/ssm/gated_delta_net.py
+index dfa6e4c35..4301ca7af 100644
+--- a/megatron/core/ssm/gated_delta_net.py
++++ b/megatron/core/ssm/gated_delta_net.py
+@@ -37,8 +37,8 @@ from megatron.core.utils import deprecate_inference_params, nvtx_range_pop, nvtx
+ # from .gated_delta_net_context_parallel import GatedDeltaNetContextParallel
+ 
+ try:
+-    from fla.modules.l2norm import l2norm
+-    from fla.ops.gated_delta_rule import chunk_gated_delta_rule
++    from mindspeed.ops.triton.l2norm import l2norm
++    from mindspeed.ops.chunk_gated_delta_rule import chunk_gated_delta_rule
+ 
+     HAVE_FLA = True
+ except ImportError:
+-- 
+2.39.5 (Apple Git-154)
+

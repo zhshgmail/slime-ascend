@@ -1,0 +1,44 @@
+From a65403cf0b54694f4dcdcabc88dd0d9aa57cb369 Mon Sep 17 00:00:00 2001
+From: cjy0x <chenjunyi10@huawei.com>
+Date: Tue, 17 Mar 2026 13:14:47 +0800
+Subject: [PATCH 2/2] change mto import position
+
+Signed-off-by: cjy0x <chenjunyi10@huawei.com>
+---
+ megatron/post_training/checkpointing.py | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/megatron/post_training/checkpointing.py b/megatron/post_training/checkpointing.py
+index 143cbb9c6..c1b2ae081 100644
+--- a/megatron/post_training/checkpointing.py
++++ b/megatron/post_training/checkpointing.py
+@@ -4,9 +4,7 @@ import logging
+ from pathlib import Path
+ from typing import Optional, Tuple, Union
+ 
+-import modelopt.torch.opt as mto
+ import torch.nn as nn
+-from modelopt.torch.opt.plugins import restore_sharded_modelopt_state
+ 
+ from megatron.core import dist_checkpointing
+ from megatron.core.utils import get_torch_version, is_torch_min_version
+@@ -115,6 +113,7 @@ def load_modelopt_state(model: nn.Module, load_dir: Optional[str] = None) -> Non
+             return
+         modelopt_state = state_dict.get("modelopt_state", None)
+         if modelopt_state is not None:
++            import modelopt.torch.opt as mto
+             mto.restore_from_modelopt_state(model, modelopt_state)
+     else:
+         # Sharded
+@@ -122,6 +121,7 @@ def load_modelopt_state(model: nn.Module, load_dir: Optional[str] = None) -> Non
+         if sharded_load_dir is None:
+             print_rank_0("No sharded checkpoint found. Skipping loading modelopt_state.")
+             return
++        from modelopt.torch.opt.plugins import restore_sharded_modelopt_state
+         restore_sharded_modelopt_state([model], sharded_load_dir)
+ 
+ 
+-- 
+2.33.0
+
+

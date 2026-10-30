@@ -1,0 +1,45 @@
+From 59d146996ad1d11be6c4fc0940f5a7a73c088f52 Mon Sep 17 00:00:00 2001
+From: Fei Mei <fei_mei_mf@qq.com>
+Date: Tue, 7 Jul 2026 16:18:54 +0800
+Subject: [PATCH 2/2] [Ascend] fix attn mask type & checkpoint save
+
+---
+ megatron/core/dist_checkpointing/strategies/filesystem_async.py | 2 +-
+ megatron/core/extensions/transformer_engine.py                  | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+ mode change 100644 => 100755 megatron/core/dist_checkpointing/strategies/filesystem_async.py
+ mode change 100644 => 100755 megatron/core/extensions/transformer_engine.py
+
+diff --git a/megatron/core/dist_checkpointing/strategies/filesystem_async.py b/megatron/core/dist_checkpointing/strategies/filesystem_async.py
+old mode 100644
+new mode 100755
+index b23c4e989..dd4b40070
+--- a/megatron/core/dist_checkpointing/strategies/filesystem_async.py
++++ b/megatron/core/dist_checkpointing/strategies/filesystem_async.py
+@@ -223,7 +223,7 @@ class FileSystemWriterAsync(FileSystemWriter):
+         for bucket in write_buckets:
+             file_name, storage_key, (bytes_data, tensor_data) = bucket
+             tensor_data = [
+-                (item, tensor.to("cpu", non_blocking=non_blocking)) for item, tensor in tensor_data
++                (item, tensor.to("cpu", non_blocking=False)) for item, tensor in tensor_data
+             ]
+             result.append((file_name, storage_key, (bytes_data, tensor_data)))
+         if non_blocking:
+diff --git a/megatron/core/extensions/transformer_engine.py b/megatron/core/extensions/transformer_engine.py
+old mode 100644
+new mode 100755
+index 57fbe5bd7..3068231f8
+--- a/megatron/core/extensions/transformer_engine.py
++++ b/megatron/core/extensions/transformer_engine.py
+@@ -1400,7 +1400,7 @@ class TEDotProductAttention(te.pytorch.DotProductAttention):
+                 # so the only acceptable mask types are `padding_causal` and `padding`. These do not
+                 # necessarily indicate there are padded tokens in the sequence.
+                 if attn_mask_type == AttnMaskType.causal:
+-                    attn_mask_type = AttnMaskType.padding_causal
++                    pass
+                 elif attn_mask_type == AttnMaskType.no_mask:
+                     attn_mask_type = AttnMaskType.padding
+             _fa_kwargs = dict(
+-- 
+2.33.0
+

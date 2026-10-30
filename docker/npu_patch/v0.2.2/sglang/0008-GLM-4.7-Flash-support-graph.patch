@@ -1,0 +1,79 @@
+From ebaaec6f7045d6c25384d6ea9a939ec9f49132aa Mon Sep 17 00:00:00 2001
+From: Todobe <todobe@qq.com>
+Date: Wed, 4 Mar 2026 15:07:17 +0800
+Subject: [PATCH 08/11] GLM-4.7-Flash support graph
+
+---
+ .../npu/attention/ascend_backend.py           | 28 +++++++++++++++++--
+ 1 file changed, 26 insertions(+), 2 deletions(-)
+
+diff --git a/python/sglang/srt/hardware_backend/npu/attention/ascend_backend.py b/python/sglang/srt/hardware_backend/npu/attention/ascend_backend.py
+index d392e2ed7..785b0b2d0 100644
+--- a/python/sglang/srt/hardware_backend/npu/attention/ascend_backend.py
++++ b/python/sglang/srt/hardware_backend/npu/attention/ascend_backend.py
+@@ -233,6 +233,18 @@ class AscendAttnBackend(AttentionBackend):
+         )
+         if self.use_mla:
+             self.ringmla_mask = self.ascend_attn_mask_builder.ringmla_mask
++        
++        # head num padding
++        self.padding_size_list = [1, 2, 4, 8, 16, 32, 64, 128]
++        self.q_head_num_padding = None
++        if hasattr(model_runner.model_config, "num_attention_heads"):
++            self.tp_q_head_num = (
++                model_runner.model_config.num_attention_heads // get_attention_tp_size()
++            )
++            for num in self.padding_size_list:
++                if num >= self.tp_q_head_num:
++                    self.q_head_num_padding = num
++                    break
+ 
+     def get_verify_buffers_to_fill_after_draft(self):
+         """
+@@ -1182,6 +1194,16 @@ class AscendAttnBackend(AttentionBackend):
+             q_nope = q.view(-1, 1, layer.tp_q_head_num, self.kv_lora_rank).contiguous()
+             q_rope = q_rope.view(-1, 1, layer.tp_q_head_num, self.qk_rope_head_dim)
+ 
++            assert (
++                self.q_head_num_padding is None 
++                or self.q_head_num_padding >= layer.tp_q_head_num
++            )
++
++            if self.q_head_num_padding > layer.tp_q_head_num:
++                padding_size = self.q_head_num_padding - layer.tp_q_head_num
++                q_nope = torch.nn.functional.pad(q_nope, (0, 0, 0, padding_size))
++                q_rope = torch.nn.functional.pad(q_rope, (0, 0, 0, padding_size))
++
+             if self.forward_metadata.seq_lens_cpu_int is None:
+                 actual_seq_len_kv = self.forward_metadata.seq_lens_cpu_list
+             else:
+@@ -1195,7 +1217,7 @@ class AscendAttnBackend(AttentionBackend):
+                 c_kv_cache,
+                 query_rope=q_rope,
+                 key_rope=k_rope_cache,
+-                num_heads=layer.tp_q_head_num,
++                num_heads=self.q_head_num_padding,
+                 num_key_value_heads=layer.tp_k_head_num,
+                 block_table=self.forward_metadata.block_tables,
+                 block_size=self.page_size,
+@@ -1215,7 +1237,7 @@ class AscendAttnBackend(AttentionBackend):
+                 c_kv_cache,
+                 query_rope=q_rope,
+                 key_rope=k_rope_cache,
+-                num_heads=layer.tp_q_head_num,
++                num_heads=self.q_head_num_padding,
+                 num_key_value_heads=layer.tp_k_head_num,
+                 block_table=self.forward_metadata.block_tables,
+                 block_size=self.page_size,
+@@ -1228,6 +1250,8 @@ class AscendAttnBackend(AttentionBackend):
+                 workspace=workspace,
+                 out=[output, softmax_lse],
+             )
++
++            output = output[:, :, : layer.tp_q_head_num, :]
+             return output.view(-1, layer.tp_q_head_num * self.kv_lora_rank)
+ 
+     def forward_decode(
+-- 
+2.33.0
+

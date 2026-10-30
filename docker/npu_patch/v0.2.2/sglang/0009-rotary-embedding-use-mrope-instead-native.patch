@@ -1,0 +1,54 @@
+From 5f8b7a802ea4083f50108d1232ae1c3ac30fdc59 Mon Sep 17 00:00:00 2001
+From: Todobe <todobe@qq.com>
+Date: Sat, 7 Mar 2026 17:19:50 +0800
+Subject: [PATCH 09/11] rotary embedding use mrope instead native
+
+---
+ python/sglang/srt/layers/rotary_embedding.py | 10 ++++++++++
+ python/sglang/srt/models/deepseek_v2.py      |  2 +-
+ 2 files changed, 11 insertions(+), 1 deletion(-)
+
+diff --git a/python/sglang/srt/layers/rotary_embedding.py b/python/sglang/srt/layers/rotary_embedding.py
+index 92be78315..6c31a7f84 100644
+--- a/python/sglang/srt/layers/rotary_embedding.py
++++ b/python/sglang/srt/layers/rotary_embedding.py
+@@ -300,6 +300,12 @@ class RotaryEmbedding(MultiPlatformOp):
+         else:
+             rotary_mode = "interleave"
+         mrope_section = [0, 0, 0]
++
++        query_shape = query.shape
++        key_shape = key.shape
++        query = query.reshape(query.shape[0], -1)
++        key = key.reshape(key.shape[0], -1)
++
+         query_out, key_out = torch_npu.npu_mrope(
+             positions,
+             query,
+@@ -309,6 +315,10 @@ class RotaryEmbedding(MultiPlatformOp):
+             mrope_section=mrope_section,
+             rotary_mode=rotary_mode,
+         )
++
++        query_out = query_out.reshape(query_shape)
++        key_out = key_out.reshape(key_shape)
++
+         return query_out, key_out
+ 
+     def forward_cpu(
+diff --git a/python/sglang/srt/models/deepseek_v2.py b/python/sglang/srt/models/deepseek_v2.py
+index 997ae7429..8f2813f85 100644
+--- a/python/sglang/srt/models/deepseek_v2.py
++++ b/python/sglang/srt/models/deepseek_v2.py
+@@ -1415,7 +1415,7 @@ class DeepseekV2AttentionMLA(nn.Module):
+                 scaling_factor = rope_scaling["factor"]
+                 mscale = yarn_get_mscale(scaling_factor, float(mscale_all_dim))
+                 self.scaling = self.scaling * mscale * mscale
+-            else:
++            elif not _is_npu:
+                 self.rotary_emb.forward = self.rotary_emb.forward_native
+         else:
+             self.rotary_emb = None
+-- 
+2.33.0
+

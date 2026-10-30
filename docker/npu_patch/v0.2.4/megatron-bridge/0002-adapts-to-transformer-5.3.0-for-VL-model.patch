@@ -1,0 +1,50 @@
+From 5c526f48fee77548e80a7d3a0632687d3524a6d6 Mon Sep 17 00:00:00 2001
+From: xiazhahe <1479989397@qq.com>
+Date: Sat, 16 May 2026 17:07:45 +0800
+Subject: [PATCH] Megatron-bridge adapts to transformer 5.3.0 for VL model
+
+---
+ .../bridge/models/qwen_vl/modelling_qwen3_vl/model.py  | 10 +++++++++-
+ src/megatron/bridge/models/qwen_vl/qwen3_vl_bridge.py  |  2 +-
+ 2 files changed, 10 insertions(+), 2 deletions(-)
+
+diff --git a/src/megatron/bridge/models/qwen_vl/modelling_qwen3_vl/model.py b/src/megatron/bridge/models/qwen_vl/modelling_qwen3_vl/model.py
+index 39c71b1..9ec06a2 100644
+--- a/src/megatron/bridge/models/qwen_vl/modelling_qwen3_vl/model.py
++++ b/src/megatron/bridge/models/qwen_vl/modelling_qwen3_vl/model.py
+@@ -231,10 +231,18 @@ class Qwen3VLModel(MegatronModule):
+ 
+             vision_embeds = None
+             if vision_grid_thw is not None and vision_grid_thw.shape[0] > 0:
+-                vision_embeds, deepstack_feature_lists = self.vision_model(
++                vision_model_output = self.vision_model(
+                     hidden_states=vision_data,
+                     grid_thw=vision_grid_thw,
+                 )
++                if hasattr(vision_model_output, 'last_hidden_state'):
++                    # transformers 5.3
++                    vision_embeds = vision_model_output.pooler_output
++                    deepstack_feature_lists = vision_model_output.deepstack_features
++                else:
++                    # transformers 4.57
++                    vision_embeds, deepstack_feature_lists = vision_model_output
++
+ 
+             combined_embeddings = self.language_model.embedding(
+                 input_ids=input_ids,
+diff --git a/src/megatron/bridge/models/qwen_vl/qwen3_vl_bridge.py b/src/megatron/bridge/models/qwen_vl/qwen3_vl_bridge.py
+index fc83478..970e7c1 100644
+--- a/src/megatron/bridge/models/qwen_vl/qwen3_vl_bridge.py
++++ b/src/megatron/bridge/models/qwen_vl/qwen3_vl_bridge.py
+@@ -90,7 +90,7 @@ class Qwen3VLBridge(MegatronModelBridge):
+             layernorm_epsilon=text_config.rms_norm_eps,
+             gated_linear_unit=True,  # Qwen3 uses gated linear units
+             make_vocab_size_divisible_by=self.make_vocab_size_divisible_by(text_config.vocab_size),
+-            rotary_base=text_config.rope_theta,
++            rotary_base=text_config.rope_parameters['rope_theta'],
+             share_embeddings_and_output_weights=getattr(text_config, "tie_word_embeddings", False),
+             vocab_size=text_config.vocab_size,
+             seq_length=text_config.max_position_embeddings,
+-- 
+2.50.1.windows.1
+

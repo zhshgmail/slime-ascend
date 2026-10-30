@@ -1,0 +1,113 @@
+From 98928e2150915f64a2fc27fdf6220479de6ef6b9 Mon Sep 17 00:00:00 2001
+From: Fei Mei <fei_mei_mf@qq.com>
+Date: Tue, 7 Jul 2026 16:50:12 +0800
+Subject: [PATCH] [Ascend] fix cp error & TE acc, soon be removed after
+ updating MA&TE
+
+---
+ pyproject.toml                                     |  3 ---
+ .../dot_product_attention/ring_context_parallel.py | 13 ++++++++++---
+ .../pytorch/module/grouped_linear.py               |  4 ++--
+ transformer_engine/pytorch/module/rmsnorm.py       | 14 +++++++-------
+ 4 files changed, 19 insertions(+), 15 deletions(-)
+ mode change 100644 => 100755 transformer_engine/pytorch/module/grouped_linear.py
+
+diff --git a/pyproject.toml b/pyproject.toml
+index f2b2acc..08b24cc 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -6,9 +6,6 @@
+ [build-system]
+ requires = [
+     "setuptools>=69.5.1",
+-    "torch-npu",
+-    "triton-ascend",
+-    "torch>=2.1",
+     "packaging>=26.2",
+     "einops",
+ ]
+diff --git a/transformer_engine/pytorch/attention/dot_product_attention/ring_context_parallel.py b/transformer_engine/pytorch/attention/dot_product_attention/ring_context_parallel.py
+index 7c803e4..8b99619 100644
+--- a/transformer_engine/pytorch/attention/dot_product_attention/ring_context_parallel.py
++++ b/transformer_engine/pytorch/attention/dot_product_attention/ring_context_parallel.py
+@@ -776,11 +776,18 @@ class AttnFuncWithCPAndRing(torch.autograd.Function):
+         cp_config.keep_prob = 1. - dropout_p
+         inner_ring = cp_config.inner_ring
+         outer_ring = cp_config.outer_ring
+-        cp_config.is_eod_reset = (cp_config.actual_seq_kvlen is not None) and (cp_config.actual_seq_qlen is not None)
++        cp_config.is_eod_reset = (cu_seqlens_q is not None) and (cu_seqlens_kv is not None)
+ 
+         # In verl, cu_seqlens_q_padded is used for CP setting.
+-        if getattr(cp_para, 'cu_seqlens_q_padded', None) is not None:
+-            cu_seqlens_q_padded_div_cp = cp_para.cu_seqlens_q_padded // cp_config.cp_size
++        # cp_para may be a dict or an object; support both access patterns.
++        cu_seqlens_q_padded = None
++        if isinstance(cp_para, dict):
++            cu_seqlens_q_padded = cp_para.get('cu_seqlens_q_padded', None)
++        elif hasattr(cp_para, 'cu_seqlens_q_padded'):
++            cu_seqlens_q_padded = cp_para.cu_seqlens_q_padded
++
++        if cu_seqlens_q_padded is not None:
++            cu_seqlens_q_padded_div_cp = cu_seqlens_q_padded // cp_config.cp_size
+             q_index, kv_index = compute_qkv_index(tuple(cu_seqlens_q_padded_div_cp))
+             q_index = q_index
+             kv_index = kv_index
+diff --git a/transformer_engine/pytorch/module/grouped_linear.py b/transformer_engine/pytorch/module/grouped_linear.py
+old mode 100644
+new mode 100755
+index 2479407..5237d4f
+--- a/transformer_engine/pytorch/module/grouped_linear.py
++++ b/transformer_engine/pytorch/module/grouped_linear.py
+@@ -221,7 +221,7 @@ class _GroupedLinear(torch.autograd.Function):
+         main_grads = [None] * N
+ 
+         origin_weights = [None] * N
+-        if not args.fuse_wgrad_accumulation and ctx.weights_requires_grad:
++        if args.fuse_wgrad_accumulation and ctx.weights_requires_grad:
+             origin_weight_refs = getattr(ctx, "origin_weight_refs", None)
+             if origin_weight_refs is not None:
+                 ctx.origin_weight_refs = None
+@@ -336,7 +336,7 @@ class _GroupedLinear(torch.autograd.Function):
+                 start_idx = end_idx
+ 
+         # MCore FSDP: handle dummy wgrad placeholders for fuse_wgrad_accumulation
+-        if not args.fuse_wgrad_accumulation and ctx.weights_requires_grad:
++        if args.fuse_wgrad_accumulation and ctx.weights_requires_grad:
+             for i in range(N):
+                 if hasattr(origin_weights[i], "grad_added_to_main_grad"):
+                     origin_weights[i].grad_added_to_main_grad = True
+diff --git a/transformer_engine/pytorch/module/rmsnorm.py b/transformer_engine/pytorch/module/rmsnorm.py
+index b9a76b7..ce0ecc0 100644
+--- a/transformer_engine/pytorch/module/rmsnorm.py
++++ b/transformer_engine/pytorch/module/rmsnorm.py
+@@ -64,12 +64,7 @@ class RMSNorm(ops.RMSNorm):
+         params_dtype: Optional[torch.dtype] = None,
+         **kwargs,
+     ) -> None:
+-        super().__init__(
+-            normalized_shape,
+-            eps=eps,
+-            zero_centered_gamma=zero_centered_gamma,
+-            **kwargs,
+-        )
++
+ 
+         if normalized_shape is None:
+             if hidden_size is None:
+@@ -94,7 +89,12 @@ class RMSNorm(ops.RMSNorm):
+                     "Both `dtype` and `params_dtype` (deprecated) kwargs are provided"
+                 )
+             kwargs["dtype"] = params_dtype
+-
++        super().__init__(
++            normalized_shape,
++            eps=eps,
++            zero_centered_gamma=zero_centered_gamma,
++            **kwargs,
++        )
+         if not isinstance(normalized_shape, Iterable):
+             normalized_shape = (normalized_shape,)
+         else:
+-- 
+2.33.0
+

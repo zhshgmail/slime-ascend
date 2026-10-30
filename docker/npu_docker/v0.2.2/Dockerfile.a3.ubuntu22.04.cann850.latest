@@ -1,0 +1,106 @@
+FROM swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:8.5.0-a3-ubuntu22.04-py3.11
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+ARG MEGATRON_COMMIT=3714d81d
+ARG MINDSPEED_COMMIT=fc63de5c
+ARG SGL_KERNEL_NPU_URL=https://github.com/sgl-project/sgl-kernel-npu/releases/download/2026.02.01/sgl-kernel-npu-2026.02.01-torch2.8.0-py311-cann8.5.0-a3-aarch64.zip
+ARG MBRIDGE_COMMIT=89eb10887887bc74853f89a4de258c0702932a1c
+ARG MEGATRON_BRIDGE_REF=dev_rl
+ARG CUSTOM_OPS_URL="https://sglang-ascend.obs.cn-east-3.myhuaweicloud.com:443/newmodel/pkg_20260413/a3/custom_ops-1.0-cp311-cp311-linux_aarch64.whl?AccessKeyId=HPUAXT4YM0U8JNTERLST&Expires=1807192789&Signature=YcM772qWZXNEXb%2BDlG0VZjxJpQE%3D"
+
+WORKDIR /workspace
+
+RUN apt-get update -y && \
+    apt-get install -y --no-install-recommends \
+        gcc \
+        g++ \
+        cmake \
+        libnuma-dev \
+        wget \
+        git \
+        curl \
+        jq \
+        vim \
+        build-essential \
+        unzip && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* && \
+    pip install --upgrade pip packaging setuptools==80.10.2 && \
+    pip cache purge
+
+RUN ARCH=$(uname -m) && \
+    # Export and source env
+    if [ "$ARCH" = "aarch64" ]; then \
+        export LD_LIBRARY_PATH=/usr/local/Ascend/ascend-toolkit/latest/aarch64-linux/devlib/linux/aarch64:$LD_LIBRARY_PATH; \
+    elif [ "$ARCH" = "x86_64" ]; then \
+        export LD_LIBRARY_PATH=/usr/local/Ascend/ascend-toolkit/latest/x86_64-linux/devlib/linux/x86_64/:$LD_LIBRARY_PATH; \
+    fi && \
+    source /usr/local/Ascend/ascend-toolkit/set_env.sh && \
+    source /usr/local/Ascend/nnal/atb/set_env.sh
+
+RUN git clone -b v0.5.8 https://github.com/sgl-project/sglang.git /workspace/sglang; \
+    cd /workspace/sglang; \
+    mv python/pyproject_other.toml python/pyproject.toml; \
+    pip install -e "python[srt_npu]"; \
+    git checkout .; \
+    git checkout sglang-slime
+
+RUN pip install \
+        torch==2.8.0 \
+        torch_npu==2.8.0.post2 \
+        torchvision==0.23.0 \
+        triton_ascend==3.2.0 \
+        transformers==5.0.0; \
+    cd /tmp; \
+    wget --no-check-certificate "${SGL_KERNEL_NPU_URL}" -O sgl-kernel-npu-a3.zip; \
+    unzip sgl-kernel-npu-a3.zip; \
+    pip install torch_memory_saver*.whl; \
+    pip install sgl_kernel_npu*.whl; \
+    pip install deep_ep*.whl; \
+    rm -rf /tmp/*
+
+RUN git clone https://github.com/ISEEKYAN/mbridge.git /workspace/mbridge; \
+    cd /workspace/mbridge; \
+    git checkout "${MBRIDGE_COMMIT}"; \
+    pip install -e .; \
+    cd /workspace; \
+    git clone https://github.com/fzyzcjy/Megatron-Bridge.git /workspace/Megatron-Bridge; \
+    cd /workspace/Megatron-Bridge; \
+    git checkout "${MEGATRON_BRIDGE_REF}"; \
+    cd /workspace; \
+    pip install "nvidia-modelopt[torch]>=0.37.0" --no-build-isolation; \
+    git clone https://github.com/NVIDIA/Megatron-LM.git --recursive /workspace/Megatron-LM; \
+    cd /workspace/Megatron-LM; \
+    git checkout "${MEGATRON_COMMIT}"; \
+    git submodule update --init --recursive; \
+    pip install -e .; \
+    cd /workspace; \
+    git clone https://gitcode.com/Ascend/MindSpeed.git /workspace/MindSpeed; \
+    cd /workspace/MindSpeed; \
+    git checkout "${MINDSPEED_COMMIT}"; \
+    pip install -e .
+
+RUN git clone https://gitcode.com/Ascend/slime-ascend.git /workspace/slime-ascend
+
+RUN cd /workspace/slime-ascend && \
+    pip install -e . && \
+    pip install --trusted-host sglang-ascend.obs.cn-east-3.myhuaweicloud.com "${CUSTOM_OPS_URL}"
+
+RUN git config --global user.email "temp@example.com"; \
+    git config --global user.name "temp"; \
+    cd /workspace/sglang; \
+    git am --whitespace=fix /workspace/slime-ascend/docker/npu_patch/v0.2.2/sglang/*; \
+    cd /workspace/Megatron-LM; \
+    git am --whitespace=fix /workspace/slime-ascend/docker/npu_patch/v0.2.2/megatron/*; \
+    cd /workspace/Megatron-Bridge; \
+    git am --whitespace=fix /workspace/slime-ascend/docker/npu_patch/v0.2.2/megatron-bridge/*; \
+    cd /workspace/MindSpeed; \
+    git am --whitespace=fix /workspace/slime-ascend/docker/npu_patch/v0.2.2/mindspeed/*; \
+    cd /workspace/mbridge; \
+    git am --whitespace=fix /workspace/slime-ascend/docker/npu_patch/v0.2.2/mbridge/*
+
+RUN pip uninstall -y triton triton-ascend && pip install triton-ascend==3.2.0 --no-cache-dir
+RUN pip list
+
+CMD ["/bin/bash"]

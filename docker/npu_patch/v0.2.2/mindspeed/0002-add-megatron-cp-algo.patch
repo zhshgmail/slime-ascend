@@ -1,0 +1,58 @@
+From 34338db3f25f9bbafbc8f3ee1f196742c443fe9b Mon Sep 17 00:00:00 2001
+From: NIE SHIYU <nieshiyu1@huawei.com>
+Date: Wed, 29 Apr 2026 15:45:27 +0800
+Subject: [PATCH] add-megatron-cp-algo
+
+---
+ mindspeed/core/context_parallel/dot_product_attention.py    | 6 ++++--
+ .../context_parallel/context_parallel_feature.py            | 6 +++++-
+ 2 files changed, 9 insertions(+), 3 deletions(-)
+
+diff --git a/mindspeed/core/context_parallel/dot_product_attention.py b/mindspeed/core/context_parallel/dot_product_attention.py
+index 97aa0aa4..22a19baf 100644
+--- a/mindspeed/core/context_parallel/dot_product_attention.py
++++ b/mindspeed/core/context_parallel/dot_product_attention.py
+@@ -5,6 +5,7 @@ import math
+ import torch
+ import torch_npu
+ 
++from megatron.core.process_groups_config import ProcessGroupCollection
+ from megatron.core.transformer.utils import attention_mask_func
+ from mindspeed.core.context_parallel import AttnMaskType
+ from mindspeed.core.context_parallel import FusedScaleMaskSoftmax
+@@ -49,11 +50,12 @@ class CPDotProductAttentionImpl:
+                  attention_dropout: float = None,
+                  softmax_scale: float = None,
+                  cp_comm_type: str = None,
+-                 model_comm_pgs: str = None):
++                 model_comm_pgs: str = None,
++                 pg_collection: ProcessGroupCollection = None):
+         cp_size = config.context_parallel_size
+         config.context_parallel_size = 1
+         self.config = config
+-        super().__init__(config, layer_number, attn_mask_type, attention_type, attention_dropout, softmax_scale, cp_comm_type)
++        super().__init__(config, layer_number, attn_mask_type, attention_type, attention_dropout, softmax_scale, cp_comm_type, pg_collection)
+         assert (
+                 self.config.context_parallel_size == 1
+         ), "Context parallelism is only supported by TEDotProductAttention!"
+diff --git a/mindspeed/features_manager/context_parallel/context_parallel_feature.py b/mindspeed/features_manager/context_parallel/context_parallel_feature.py
+index 493e764e..3d1a1d02 100644
+--- a/mindspeed/features_manager/context_parallel/context_parallel_feature.py
++++ b/mindspeed/features_manager/context_parallel/context_parallel_feature.py
+@@ -103,8 +103,12 @@ class ContextParallelFeature(MindSpeedFeature):
+             from mindspeed.core.context_parallel.adaptor import MindSpeedCPDotProductAttention
+             from mindspeed.te.pytorch.attention.dot_product_attention.dot_product_attention import \
+                 MindSpeedTEDotProductAttention
++
+             patch_manager.register_patch('megatron.core.transformer.dot_product_attention.DotProductAttention', MindSpeedCPDotProductAttention)
+-            patch_manager.register_patch('megatron.core.extensions.transformer_engine.TEDotProductAttention', MindSpeedTEDotProductAttention)
++            if _cp_algo in ['kvallgather_cp_algo']:
++                patch_manager.register_patch('megatron.core.extensions.transformer_engine.TEDotProductAttention', MindSpeedTEDotProductAttention)
++            else:
++                patch_manager.register_patch('megatron.core.extensions.transformer_engine.TEDotProductAttention', MindSpeedCPDotProductAttention)
+ 
+             from mindspeed.core.context_parallel.adaptor import attention_init_wrapper
+             patch_manager.register_patch('megatron.core.transformer.attention.Attention.__init__', attention_init_wrapper)
+-- 
+2.50.1.windows.1
+

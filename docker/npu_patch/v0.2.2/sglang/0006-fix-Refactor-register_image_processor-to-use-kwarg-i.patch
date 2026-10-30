@@ -1,0 +1,29 @@
+From 33e51091038dd2163d4117ac4e1ea24d9f39a8d6 Mon Sep 17 00:00:00 2001
+From: Xinyuan Tong <115166877+JustinTong0323@users.noreply.github.com>
+Date: Sat, 24 Jan 2026 18:31:01 -0500
+Subject: [PATCH 06/11] fix: Refactor register_image_processor to use kwarg
+ instead of positional arg (#17685)
+
+Signed-off-by: Xinyuan Tong <xinyuantong.cs@gmail.com>
+---
+ python/sglang/srt/configs/utils.py | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/python/sglang/srt/configs/utils.py b/python/sglang/srt/configs/utils.py
+index 8403d95da..16575dfe8 100644
+--- a/python/sglang/srt/configs/utils.py
++++ b/python/sglang/srt/configs/utils.py
+@@ -15,7 +15,9 @@ def register_image_processor(
+     """
+     register customized hf image processor while removing hf impl
+     """
+-    AutoImageProcessor.register(config, None, image_processor, None, exist_ok=True)
++    AutoImageProcessor.register(
++        config, slow_image_processor_class=image_processor, exist_ok=True
++    )
+ 
+ 
+ def register_processor(config: Type[PretrainedConfig], processor: Type[ProcessorMixin]):
+-- 
+2.33.0
+

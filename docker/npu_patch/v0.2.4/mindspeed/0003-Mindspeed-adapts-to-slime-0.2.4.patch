@@ -1,0 +1,83 @@
+From ca5c432dd193374782d48b26a7df4d7786473d59 Mon Sep 17 00:00:00 2001
+From: xiazhahe <1479989397@qq.com>
+Date: Sat, 16 May 2026 17:00:44 +0800
+Subject: [PATCH] Mindspeed adapts to slime 0.2.4
+
+---
+ .../core/megatron_basic/arguments_basic.py    | 23 +++++++++++++++++++
+ .../megatron_basic/megatron_basic.py          |  3 ++-
+ mindspeed/patch_utils.py                      |  5 +++-
+ 3 files changed, 29 insertions(+), 2 deletions(-)
+
+diff --git a/mindspeed/core/megatron_basic/arguments_basic.py b/mindspeed/core/megatron_basic/arguments_basic.py
+index 8ea25b9f..04ad9663 100644
+--- a/mindspeed/core/megatron_basic/arguments_basic.py
++++ b/mindspeed/core/megatron_basic/arguments_basic.py
+@@ -113,3 +113,26 @@ def transformer_config_init_wrapper(fn):
+         fn(self, *args, **known_config)
+ 
+     return wrapper
++
++def transformer_config_init_subclass(cls, **kwargs):
++    mutable_types = (list, dict, set, bytearray)
++    unknown_config = {}
++    full_args = vars(get_full_args()).copy()
++    full_args.update(kwargs)
++
++    config_key = inspect.signature(cls).parameters
++    for key, value in full_args.items():
++        if key not in config_key:
++            unknown_config[key] = value
++
++    for key, value in unknown_config.items():
++        if not hasattr(cls, key):
++            cls.__annotations__[key] = type(value)
++            value = field(default_factory=value) if callable(value) and not isinstance(value, type) else value
++            if callable(value) and not isinstance(value, type):
++                value = field(default_factory=value)
++            elif type(value) in mutable_types:
++                value = field(default_factory=lambda: value)
++            else:
++                value = value
++            setattr(cls, key, value)
+\ No newline at end of file
+diff --git a/mindspeed/features_manager/megatron_basic/megatron_basic.py b/mindspeed/features_manager/megatron_basic/megatron_basic.py
+index 355913e1..b7a507ca 100644
+--- a/mindspeed/features_manager/megatron_basic/megatron_basic.py
++++ b/mindspeed/features_manager/megatron_basic/megatron_basic.py
+@@ -43,8 +43,9 @@ class MegatronBasicFeature(MindSpeedFeature):
+ 
+     def register_mcore_basic_patches(self, pm, args):
+         # configuration patches
+-        from mindspeed.core.megatron_basic.arguments_basic import transformer_config_init_wrapper, transformer_config_post_init_wrapper
++        from mindspeed.core.megatron_basic.arguments_basic import transformer_config_init_wrapper, transformer_config_post_init_wrapper, transformer_config_init_subclass
+         pm.register_patch("megatron.core.transformer.transformer_config.TransformerConfig.__init__", transformer_config_init_wrapper)
++        pm.register_patch("megatron.core.transformer.transformer_config.TransformerConfig.__init_subclass__", classmethod(transformer_config_init_subclass))
+         pm.register_patch("megatron.core.transformer.transformer_config.MLATransformerConfig.__init__", transformer_config_init_wrapper)
+         pm.register_patch("megatron.core.transformer.transformer_config.TransformerConfig.__post_init__", transformer_config_post_init_wrapper)
+ 
+diff --git a/mindspeed/patch_utils.py b/mindspeed/patch_utils.py
+index a489d58c..98aec637 100644
+--- a/mindspeed/patch_utils.py
++++ b/mindspeed/patch_utils.py
+@@ -1,4 +1,5 @@
+ import importlib
++import inspect
+ import sys
+ import types
+ from typing import List, Dict, Union
+@@ -93,8 +94,10 @@ class Patch:
+ 
+     def remove_patch(self):
+         for key, value in sys.modules.copy().items():
+-            if 'mindspeed' in key:
++            if 'mindspeed' in key or 'torch.classes' == key:
+                 continue
++            if inspect.isclass(self.orig_module) and hasattr(value, self.orig_module_name.split('.')[-1]):
++                value = getattr(value, self.orig_module_name.split('.')[-1])
+             if self.orig_func_name is not None and hasattr(value, self.orig_func_name) \
+                     and id(getattr(value, self.orig_func_name)) == id(self.final_patch_func):
+                 setattr(value, self.orig_func_name, self.orig_func)
+-- 
+2.50.1.windows.1
+

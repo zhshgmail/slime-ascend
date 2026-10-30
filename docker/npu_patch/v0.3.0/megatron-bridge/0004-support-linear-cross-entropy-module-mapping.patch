@@ -1,0 +1,21 @@
+From 1f1d0af000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: gcw_OVf28k8w <chenyufei39@huawei.com>
+Date: Mon, 21 Sep 2026 04:00:00 +0800
+Subject: [PATCH] fix: support linear cross entropy module mapping
+
+---
+ src/megatron/bridge/models/conversion/param_mapping.py | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/src/megatron/bridge/models/conversion/param_mapping.py b/src/megatron/bridge/models/conversion/param_mapping.py
+index 81568263..a0813452 100644
+--- a/src/megatron/bridge/models/conversion/param_mapping.py
++++ b/src/megatron/bridge/models/conversion/param_mapping.py
+@@ -1086,6 +1086,7 @@ class AutoMapping(MegatronParamMapping[torch.Tensor]):
+     _MODULE_TYPE_REGISTRY: Dict[str, set] = {
+         "column": {
+             "ColumnParallelLinear",
++            "LinearCrossEntropyModule",
+             "TEColumnParallelLinear",
+             "TELayerNormColumnParallelLinear",
+             "MindSpeedTELayerNormColumnParallelLinear",

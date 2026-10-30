@@ -1,0 +1,44 @@
+From 00097c4651042f499e1d1de12c70e34c292be613 Mon Sep 17 00:00:00 2001
+From: Fei Mei <fei_mei_mf@qq.com>
+Date: Tue, 7 Jul 2026 16:36:01 +0800
+Subject: [PATCH 3/4] [Ascend]fix qwen3 acc, it will be fixed in latest version
+ of sglang
+
+---
+ python/sglang/srt/models/qwen3.py     | 1 -
+ python/sglang/srt/models/qwen3_moe.py | 1 -
+ 2 files changed, 2 deletions(-)
+ mode change 100644 => 100755 python/sglang/srt/models/qwen3.py
+ mode change 100644 => 100755 python/sglang/srt/models/qwen3_moe.py
+
+diff --git a/python/sglang/srt/models/qwen3.py b/python/sglang/srt/models/qwen3.py
+old mode 100644
+new mode 100755
+index ce8c98d5b5..cf86c72c55
+--- a/python/sglang/srt/models/qwen3.py
++++ b/python/sglang/srt/models/qwen3.py
+@@ -286,7 +286,6 @@ class Qwen3Attention(nn.Module):
+             save_kv_cache = False
+         elif (
+             not _is_npu
+-            or forward_batch.forward_mode.is_extend_or_draft_extend_or_mixed()
+         ):
+             q, k, v = self.forward_prepare_native(
+                 positions=positions,
+diff --git a/python/sglang/srt/models/qwen3_moe.py b/python/sglang/srt/models/qwen3_moe.py
+old mode 100644
+new mode 100755
+index 5c6c76bf13..6d5878f5ba
+--- a/python/sglang/srt/models/qwen3_moe.py
++++ b/python/sglang/srt/models/qwen3_moe.py
+@@ -668,7 +668,6 @@ class Qwen3MoeAttention(nn.Module):
+             return hidden_states, forward_batch, None
+         if (
+             not _is_npu
+-            or forward_batch.forward_mode.is_extend_or_draft_extend_or_mixed()
+         ):
+             return self.forward_prepare_native(
+                 positions=positions,
+-- 
+2.33.0
+

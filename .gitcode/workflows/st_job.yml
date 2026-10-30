@@ -1,0 +1,47 @@
+name: ST_job
+
+on:
+  workflow_call:
+    inputs:
+      pr_id:
+        required: true
+        type: string
+      target_branch:
+        required: true
+        type: string
+      st_docker_image:
+        required: true
+        type: string
+
+jobs:
+  ST:
+    name: ST
+    select: selected_by_default
+    runs-on: [self-hosted, slime_ascend, npu=8]
+    container:
+      image: ${{ inputs.st_docker_image }}
+    steps:
+      - name: checkout slime-ascend
+        uses: checkout
+        with:
+          allow-unsafe-pr-checkout: true
+          ref: refs/merge-requests/${{ inputs.pr_id }}/merge
+          fetch-depth: 0
+      - name: initialize slime submodule if present
+        run: |
+          set -e
+          if git -C "${ATOMGIT_WORKSPACE}" ls-files --stage -- slime | grep -q '^160000 '; then
+            git -C "${ATOMGIT_WORKSPACE}" submodule update --init --recursive slime
+          fi
+      - name: run ST
+        run: |
+          set -e
+          CI_SCRIPT_DIR=$(mktemp -d)
+          git clone -b ${{ atomgit.event.repository.default_branch }} "${ATOMGIT_REPOSITORY_URL}" "${CI_SCRIPT_DIR}"
+          ST_SCRIPT="${CI_SCRIPT_DIR}/.gitcode/workflows/scripts/st/slime_st.sh"
+          if [ ! -f "${ST_SCRIPT}" ]; then
+            ST_SCRIPT="${ATOMGIT_WORKSPACE}/.gitcode/workflows/scripts/st/slime_st.sh"
+          fi
+          test -f "${ST_SCRIPT}"
+          sed -i 's/\r//g' "${ST_SCRIPT}"
+          bash "${ST_SCRIPT}" "${ATOMGIT_WORKSPACE}" "${{ inputs.pr_id }}" "${{ inputs.target_branch }}"

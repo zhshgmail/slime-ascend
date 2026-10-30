@@ -1,0 +1,135 @@
+From e76cdfbb41ac7d8fccbeed015ecb7c4f72788098 Mon Sep 17 00:00:00 2001
+From: Fei Mei <fei_mei_mf@qq.com>
+Date: Mon, 23 Mar 2026 17:40:07 +0800
+Subject: [PATCH] fix megatron TP shape mismatch & parameter mismatch
+
+---
+ mindspeed/core/fusions/fused_moe_permute.py              | 4 ++--
+ mindspeed/core/fusions/fused_rope.py                     | 3 ++-
+ mindspeed/megatron_adaptor.py                            | 1 +
+ .../dot_product_attention/dot_product_attention.py       | 6 +++++-
+ mindspeed/te/pytorch/module/grouped_linear.py            | 2 ++
+ mindspeed/te/pytorch/module/linear.py                    | 9 +++++++--
+ 6 files changed, 19 insertions(+), 6 deletions(-)
+
+diff --git a/mindspeed/core/fusions/fused_moe_permute.py b/mindspeed/core/fusions/fused_moe_permute.py
+index bb007b44..98708a5b 100644
+--- a/mindspeed/core/fusions/fused_moe_permute.py
++++ b/mindspeed/core/fusions/fused_moe_permute.py
+@@ -100,9 +100,9 @@ def sort_chunks_by_idxs_wrapper(fn):
+ def moe_alltoall_token_dispatcher_init_wrapper(fn):
+     @wraps(fn)
+     def wrapper(
+-            self, num_local_experts, local_expert_indices, config, model_comm_pgs=None
++            self, num_local_experts, local_expert_indices, config, pg_collection=None
+     ) -> None:
+-        fn(self, num_local_experts, local_expert_indices, config, model_comm_pgs)
++        fn(self, num_local_experts, local_expert_indices, config, pg_collection)
+         # Since fused_sort_chunks_by_index is not currently supported, set self.permute_idx_device to None
+         self.permute_idx_device = None
+         input_chunk_idxs = torch.arange(
+diff --git a/mindspeed/core/fusions/fused_rope.py b/mindspeed/core/fusions/fused_rope.py
+index a6f02e07..70f7cb08 100644
+--- a/mindspeed/core/fusions/fused_rope.py
++++ b/mindspeed/core/fusions/fused_rope.py
+@@ -126,5 +126,6 @@ def apply_rotary_pos_emb(
+         freqs,
+         rotary_interleaved=config.rotary_interleaved,
+         multi_latent_attention=config.multi_latent_attention,
+-        mscale=mscale
++        mscale=mscale,
++        cp_group=cp_group
+     )
+diff --git a/mindspeed/megatron_adaptor.py b/mindspeed/megatron_adaptor.py
+index f14b231d..4615590e 100644
+--- a/mindspeed/megatron_adaptor.py
++++ b/mindspeed/megatron_adaptor.py
+@@ -57,6 +57,7 @@ def delete_lock_file():
+ def repatch(args):
+     MindSpeedFeaturesManager.remove_patches()
+     full_args = get_full_args()
++    args = vars(args)
+     for k, v in args.items():
+         setattr(full_args, k, v)
+     MindSpeedFeaturesManager.apply_features_pre_patches(full_args)
+diff --git a/mindspeed/te/pytorch/attention/dot_product_attention/dot_product_attention.py b/mindspeed/te/pytorch/attention/dot_product_attention/dot_product_attention.py
+index ac4eabe5..78c5866d 100644
+--- a/mindspeed/te/pytorch/attention/dot_product_attention/dot_product_attention.py
++++ b/mindspeed/te/pytorch/attention/dot_product_attention/dot_product_attention.py
+@@ -330,6 +330,8 @@ class DotProductAttention(torch.nn.Module):
+         inference_params: Any = None,
+         pad_between_seqs: Optional[bool] = None,
+         fp8_output: Optional[bool] = False,
++        local_cp_size=None,
++        cp_group=None,
+     ) -> torch.Tensor:
+         """
+         Dot Product Attention Layer.
+@@ -659,7 +661,9 @@ class MindSpeedTEDotProductAttention(DotProductAttention):
+         ) and not getattr(self.config, 'is_llava', False):
+             self.config.sparse_mode = 2
+             attention_mask = get_attention_mask(self.config)
+-
++        attention_mask = torch.triu(
++            torch.ones((2048, 2048),
++                       device=query.device, dtype=torch.bool), diagonal=1)
+         packed_seq_kwargs = (
+             {key: getattr(packed_seq_params, key) for key in self.kept_packed_seq_params}
+             if packed_seq_params is not None
+diff --git a/mindspeed/te/pytorch/module/grouped_linear.py b/mindspeed/te/pytorch/module/grouped_linear.py
+index d421f79b..34ace58c 100644
+--- a/mindspeed/te/pytorch/module/grouped_linear.py
++++ b/mindspeed/te/pytorch/module/grouped_linear.py
+@@ -173,6 +173,8 @@ class MindSpeedTEGroupedLinear(torch.nn.Module):
+                     *sharded_offsets,
+                     (ep_axis, local_expert_indices_offset + gemm_idx, num_global_experts),
+                 ),
++                tp_group=get_expert_tensor_parallel_group(),
++                dp_cp_group=metadata["dp_cp_group"],
+             )
+             # Remove expert layers indexing from sharded keys
+             replace_prefix_for_sharding(sub_sd, f'{gemm_idx}.', prefix)
+diff --git a/mindspeed/te/pytorch/module/linear.py b/mindspeed/te/pytorch/module/linear.py
+index fde186a1..3c4f04f5 100644
+--- a/mindspeed/te/pytorch/module/linear.py
++++ b/mindspeed/te/pytorch/module/linear.py
+@@ -18,7 +18,7 @@ from megatron.core.parallel_state import (
+ from megatron.core.tensor_parallel.layers import _initialize_affine_weight_cpu, _initialize_affine_weight_gpu, \
+     set_tensor_model_parallel_attributes, ColumnParallelLinear, linear_with_grad_accumulation_and_async_allreduce
+ from megatron.core.transformer.utils import make_sharded_tensors_for_checkpoint
+-from megatron.core.utils import divide
++from megatron.core.utils import divide, get_tensor_model_parallel_group_if_none
+ from mindspeed.args_utils import get_full_args as get_args
+ from mindspeed.te.pytorch.fp8 import fp8_matmul
+ from mindspeed.te.pytorch.fp8.metadata import FP8Metadata
+@@ -781,6 +781,7 @@ class MindSpeedTELinear(torch.nn.Module):
+             self.register_parameter('bias', None)
+ 
+         for param in self.parameters():
++            setattr(param, "parallel_mode", parallel_mode)
+             if self.is_expert:
+                 # Reduce the gradient on the expert_data_parallel group for expert linear layers
+                 setattr(param, "allreduce", not (self.is_expert and self.expert_parallel))
+@@ -791,6 +792,8 @@ class MindSpeedTELinear(torch.nn.Module):
+                     # Reduce the gradient further on the TP group since the weight is
+                     # duplicated across TP ranks
+                     setattr(param, "sequence_parallel", self.sequence_parallel)
++        tp_group = get_tensor_model_parallel_group_if_none(tp_group, is_expert=is_expert)
++        self._tp_group = tp_group
+ 
+         # Forward impl settings without ascend-mc2.
+         self._linear_forward_impl = linear_with_grad_accumulation_and_async_allreduce
+@@ -826,7 +829,9 @@ class MindSpeedTELinear(torch.nn.Module):
+         """Sharding along axis 0, bias sharded"""
+         state_dict = self.state_dict(prefix='', keep_vars=True)
+         return make_sharded_tensors_for_checkpoint(
+-            state_dict, prefix, {'weight': 0, 'bias': 0}, sharded_offsets
++            state_dict, prefix, None, sharded_offsets,
++            tp_group=self._tp_group,
++            dp_cp_group=metadata["dp_cp_group"],
+         )
+ 
+ 
+-- 
+2.28.0.windows.1
+
