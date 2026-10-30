@@ -21,6 +21,6 @@ def main():
     required={(tuple(v['offsets']),tuple(v['sizes'])) for v in expected['chunks']}
     if actual!=required: raise ValueError('Incomplete original model shard coverage: '+key)
  except (ValueError,KeyError,TypeError,OSError) as e: errors.append(str(e))
- result={'ranks':rows,'validation_errors':errors,'all_complete_state_equal':not errors and len(rows)==4 and all(x['equal'] for x in rows),'qualification':'Validated hook digests; native invocation provenance, actual generation/training inputs and next-step numerics/performance require separate evidence'}
- a.output.write_text(json.dumps(result,indent=2)+'\n');raise SystemExit(0 if result['all_complete_state_equal'] else 1)
+ result={'ranks':rows,'validation_errors':errors,'reported_sections_equal':not errors and len(rows)==4 and all(x['equal'] for x in rows),'all_complete_state_equal':False,'complete_state_validation':'UNQUALIFIED_WITHDRAWN_MODEL_VALUES_NOT_BOUND_TO_INVENTORY','qualification':'Validated hook digests; native invocation provenance, actual generation/training inputs and next-step numerics/performance require separate evidence'}
+ a.output.write_text(json.dumps(result,indent=2)+'\n');raise SystemExit(1 if errors or not result['reported_sections_equal'] else 2)
 if __name__=='__main__':main()

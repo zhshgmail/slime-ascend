@@ -65,7 +65,8 @@ def main():
         r['common_equal']=digest(lc)==digest(rc)
         if not r['common_equal']:r['differences'].append('common.pt logicalstate')
     r['qualification']='METADATA_ONLY_NO_RESTORE_OR_VALUE_PASS' if a.metadata_only else 'PERSISTED_LOGICAL_STATE_COMPARISON_ONLY_NOT_PROCESS_RESTORE'
-    r['complete_original_state_equal']=bool(a.complete_original and not a.metadata_only and not r['differences'] and len(r['compared'])==522)
+    r['complete_original_state_equal']=False
+    if a.complete_original: r['complete_state_validation']='UNQUALIFIED_WITHDRAWN_RNG_CONTENT_AND_VALUE_COVERAGE_PENDING'
     a.output.write_text(json.dumps(r,indent=2)+'\n')
-    raise SystemExit(1 if r['differences'] else 0)
+    raise SystemExit(1 if r['differences'] else 2 if a.complete_original and not a.metadata_only else 0)
 if __name__=='__main__': main()
