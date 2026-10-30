@@ -1,6 +1,6 @@
 {
   "schema": "slime-tp4-source-custody.v1",
-  "upstream": "https://gitcode.com/Ascend/slime.git",
+  "upstream": "https://gitcode.com/Ascend/slime-ascend.git",
   "originalCommit": "8216e89e69371d21c9871aad7d69f638ce44316e",
   "originalPreservationSnapshot": "2ac6f6325a00e32f9215001acc5e841268d93d0c",
   "parentBufferCustody": "b8fdd9631b9ff9261f8fc5fda5c163321362e1b5",
@@ -66,5 +66,6 @@
       "patchSHA256": "f14548c8cf2b405c09fe4b7d67ee6f2cb758d9e63e47d7570ec9b5d1badedb98"
     }
   ],
-  "runtimeExecutionByCustodian": "NOT_RUN"
+  "runtimeExecutionByCustodian": "NOT_RUN",
+  "upstreamAcquisitionReceiptSHA256": "dff942c24b4bf487360369b293e63bc69050d954a596bdd38bd1010d06e15fc4"
 }
