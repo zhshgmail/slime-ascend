@@ -1,4 +1,5 @@
 import os
+import re
 
 import ray
 from ray.util.placement_group import PlacementGroup
@@ -6,6 +7,27 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 from slime.ray.utils import NOSET_VISIBLE_DEVICES_ENV_VARS_LIST
 from slime.utils.common import is_npu
+
+
+def _npu_preload_allocator_env(process_env, train_env):
+    """Select a non-VMM allocator without dropping unrelated allocator options."""
+    keys = ("PYTORCH_NPU_ALLOC_CONF", "PYTORCH_ALLOC_CONF")
+    effective = {key: train_env.get(key, process_env.get(key)) for key in keys
+                 if key in train_env or key in process_env}
+    if len(effective) > 1:
+        raise ValueError("NPU preload offload requires only one allocator alias; "
+                         "unset one of PYTORCH_NPU_ALLOC_CONF/PYTORCH_ALLOC_CONF "
+                         "in the launcher and train-env-vars before starting Ray.")
+    key, value = next(iter(effective.items()), (keys[0], ""))
+    if not isinstance(value, str):
+        raise TypeError("Allocator configuration must be a string")
+    pattern = r"(^|,)\s*expandable_segments\s*:\s*[^,]*"
+    if re.search(pattern, value):
+        value = re.sub(pattern, lambda m: m.group(1) + "expandable_segments:False", value)
+    else:
+        value += ("," if value.strip() else "") + "expandable_segments:False"
+    # Pinned TorchNPU post6 reads only the NPU-specific allocator key.
+    return {keys[0]: value}
 
 
 class RayTrainGroup:
@@ -61,6 +83,9 @@ class RayTrainGroup:
         }
 
         if self.args.offload_train and self.args.train_backend == "megatron":
+            if is_npu():
+                env_vars.update(_npu_preload_allocator_env(os.environ, self.args.train_env_vars))
+
             import torch_memory_saver
 
             for path in [
@@ -79,6 +104,9 @@ class RayTrainGroup:
                 )
 
             env_vars["LD_PRELOAD"] = dynlib_path
+            # The Python controller must use the same DSO as the process allocator.
+            # Ascend TMS otherwise defaults to its separate torch-pool library.
+            env_vars["TMS_HOOK_MODE"] = "preload"
             env_vars["TMS_INIT_ENABLE"] = "1"
             env_vars["TMS_INIT_ENABLE_CPU_BACKUP"] = "1"
 

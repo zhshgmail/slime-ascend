@@ -1,0 +1,70 @@
+{
+  "schema": "slime-tp4-source-custody.v1",
+  "upstream": "https://gitcode.com/Ascend/slime.git",
+  "originalCommit": "8216e89e69371d21c9871aad7d69f638ce44316e",
+  "originalPreservationSnapshot": "2ac6f6325a00e32f9215001acc5e841268d93d0c",
+  "parentBufferCustody": "b8fdd9631b9ff9261f8fc5fda5c163321362e1b5",
+  "sourceManifestSHA256": "884b54f8b5a24678f99bb60d50e72411410cd951d54251f205b43dc1e2cf2ebb",
+  "sourceManifestFiles": 3657,
+  "selectedSlimeFilesLocallyVerified": 222,
+  "scope": "Joint original8216 plus accepted R3 actor_group configuration and accepted nonempty rollout buffer state. CPU lock candidate is not adopted. No runtime validation or full training/recovery qualification claimed. Snapshot ancestry is preservation history, not recovered original upstream Git ancestry.",
+  "files": [
+    {
+      "path": "setup.py",
+      "bytes": 1516,
+      "sha256": "a7d1b27703860845ff7dba805873415b9cedd5e3441da02d3e556ac3da9a576a",
+      "oldTargetSHA256": "b5412c181485f0fce8f23d4a106ac6a2147e0364023b475e558797c272672076",
+      "changeRelativeTo8216": "unchanged original8216; restoration relative to old target only"
+    },
+    {
+      "path": "slime/backends/megatron_utils/actor.py",
+      "bytes": 52011,
+      "sha256": "7fa74284b567e9f62f093b4a6918086786dde3edec30868d100f3a34eedbfb0e",
+      "oldTargetSHA256": "54f6e009e17eef5703f39b3db8575bf1e04bde69917c73bd8aea1b8a6469f7c3",
+      "changeRelativeTo8216": "unchanged original8216; restoration relative to old target only"
+    },
+    {
+      "path": "slime/backends/megatron_utils/checkpoint.py",
+      "bytes": 5957,
+      "sha256": "6ab1b1c8c64043b501384555ec259b328fdb2bdbbdf0cb14ba835de9111d8d30",
+      "oldTargetSHA256": "d81af0b14891e14a520b1bad76bdeaeee78a20717ebdba47d7034c18c3c6ca68",
+      "changeRelativeTo8216": "unchanged original8216; restoration relative to old target only"
+    },
+    {
+      "path": "slime/backends/megatron_utils/model.py",
+      "bytes": 41048,
+      "sha256": "795909040e6443142ebfb79cc815aca1a168e86a6e97db3fd58fb1e397ab0898",
+      "oldTargetSHA256": "d5342e025c289a141587af25814186c97539139cbab516dd6b4e348c2c2b7911",
+      "changeRelativeTo8216": "unchanged original8216; restoration relative to old target only"
+    },
+    {
+      "path": "slime/ray/actor_group.py",
+      "bytes": 8256,
+      "sha256": "1a7b17003da85f28b827e94705b9765df644c02eac2e9d8c6aa9f04f16ebe992",
+      "oldTargetSHA256": "1c9cd451fc661c9894723b1b31f169cb49068fa4d75d2326b501ed2e6e9733eb",
+      "changeRelativeTo8216": "accepted R3 worker config"
+    },
+    {
+      "path": "slime/rollout/data_source.py",
+      "bytes": 10991,
+      "sha256": "beebaf7772f525d1691606082ce0c27a0e17eaa3d74cf58c695f6e0afd28a096",
+      "oldTargetSHA256": "446595578aff88fac1637b8956a245853db1167e7964896bbab2fff61b1db616",
+      "changeRelativeTo8216": "accepted nonempty buffer repair"
+    }
+  ],
+  "acceptedPatches": [
+    {
+      "path": "slime/ray/actor_group.py",
+      "beforeSHA256": "1c9cd451fc661c9894723b1b31f169cb49068fa4d75d2326b501ed2e6e9733eb",
+      "afterSHA256": "1a7b17003da85f28b827e94705b9765df644c02eac2e9d8c6aa9f04f16ebe992",
+      "patchSHA256": "a157feb7e91356d70f3317a486b125a8e79ce624c72e8bdaa52fd063fec218d7"
+    },
+    {
+      "path": "slime/rollout/data_source.py",
+      "beforeSHA256": "446595578aff88fac1637b8956a245853db1167e7964896bbab2fff61b1db616",
+      "afterSHA256": "beebaf7772f525d1691606082ce0c27a0e17eaa3d74cf58c695f6e0afd28a096",
+      "patchSHA256": "f14548c8cf2b405c09fe4b7d67ee6f2cb758d9e63e47d7570ec9b5d1badedb98"
+    }
+  ],
+  "runtimeExecutionByCustodian": "NOT_RUN"
+}
