@@ -95,9 +95,14 @@ def collect_original(args, model, optimizer, scheduler, rng_state, iteration=Non
     """
     from megatron.training import checkpointing
     from megatron.core.dist_checkpointing import mapping, state_dict_utils
+    from megatron.core.optimizer import distrib_optimizer, optimizer as optimizer_module
+    from megatron.core.optimizer.cpu_offloading import hybrid_optimizer
+    from megatron.core import optimizer_param_scheduler
     # Source assertions are against external authenticated contract entries,
     # not against hashes supplied by a capture about itself.
-    sources = [_source(m) for m in (checkpointing, mapping, state_dict_utils)]
+    sources = [_source(m) for m in (checkpointing, mapping, state_dict_utils,
+                                  distrib_optimizer, optimizer_module, hybrid_optimizer,
+                                  optimizer_param_scheduler)]
     observer_path = Path(__file__).resolve()
     sources.append({'path':str(observer_path), 'sha256':sha256_file(observer_path)})
     if expected_source_files is None or any(
@@ -116,7 +121,10 @@ def collect_original(args, model, optimizer, scheduler, rng_state, iteration=Non
         args, model, optimizer, scheduler, rng_state, iteration=iteration,
         optim_sd_kwargs={"metadata": md}, model_sd_kwargs={"metadata": md})
     result = collect_save_values(state)
-    result['sources'].append(_source(checkpointing))
+    result['sources'].extend(sources)
+    result['original_save_metadata'] = {k:v for k,v in md.items() if k!='dp_cp_group'}
+    result['optimizer_type'] = type(optimizer).__module__+'.'+type(optimizer).__qualname__
+    result['scheduler_type'] = type(scheduler).__module__+'.'+type(scheduler).__qualname__
     return result
 
 
@@ -183,7 +191,8 @@ def before_train_step(args, rollout_id, step_id, model, optimizer, opt_param_sch
     rank = torch.distributed.get_rank()
     out = Path(os.environ['SLIME_COLD_STATE_DIR'])
     out.mkdir(parents=True, exist_ok=True)
-    if rank == 0 and os.environ.get('SLIME_COLD_PRESERVE_SPLIT') == '1':
+    if (rank == 0 and args.start_rollout_id == 0
+            and os.environ.get('SLIME_COLD_PRESERVE_SPLIT') == '1'):
         tracker = (Path(args.save) / 'latest_checkpointed_iteration.txt').read_bytes()
         if tracker.strip() != b'0':
             raise ValueError('actual split tracker is not iteration zero')

@@ -5,7 +5,7 @@ These tools add observers/readers around the selected original Slime train.py. T
 ## A valid paired execution
 
 1. Use `prepare_entries.py --original-argv ORIGINAL_TARGET_ARGV.json --checkpoint-root /restore/split-checkpoint-output --output UNIQUE_OUTPUT --contract CONTRACT.json --contract-sha256 SHA256` to prepare the explicit `control_argv.json` and `resume_argv.json`. Each JSON is the complete `sys.argv` for the normal original `train.py`; keep the existing original runpy entry and bind the selected JSON in place of its argument file. Add only that profile's recorded environment. Stage these tools at the Slime source root so the original hook's normal module import resolves.
-2. Control runs original rollouts 0 and 1 from the same canonical HF model and dataset. Both calls preserve actual rollout Samples and trainer inputs through original debug-save switches; they do not replay or fabricate responses. The hook returns without touching state outside rollout1/step0, avoiding original lazy optimizer state before the first update. Before original training step 1, the observer hashes each TP rank's full local model, original optimizer DP-zero master/moment buffers, scheduler, and original RNG getter. Optimizer `state_dict()` alone omits parameter and moment buffers and is insufficient. The reader synchronizes and copies state to CPU; this run cannot serve as an uninstrumented performance measurement.
+2. Control runs original rollouts 0 and 1 from the same canonical HF model and dataset. Both calls preserve actual rollout Samples and trainer inputs through original debug-save switches; they do not replay or fabricate responses. The hook returns without touching state outside rollout1/step0, avoiding original lazy optimizer state before the first update. Before original training step 1, the observer hashes each TP rank's full local model, original optimizer save-interface master/moment shards, scheduler, and original RNG getter. Optimizer `state_dict()` alone omits parameter and moment buffers and is insufficient. The reader synchronizes and copies state to CPU; this run cannot serve as an uninstrumented performance measurement.
 3. At that same point, rank0 preserves the actual tracker byte while it still selects iteration0. Resume needs a shallow read-only checkpoint view: the SAME control's canonical `iter_0000000` directory, its canonical `rollout` directory, and this captured `split_latest_checkpointed_iteration.txt` bound as `latest_checkpointed_iteration.txt`. Do not copy 44GB. Do not pass the later control root unchanged: after control finishes its tracker points at1, and selected MCore uses a truthiness test so `--ckpt-step 0` does not override it. Do not substitute a different fresh trajectory's checkpoint0.
 4. Retire the control unit completely, then start a fresh process/container with the resume argv (`start_rollout_id=1`, `num_rollout=2`, real split checkpoint root). All four ranks must pass the original model/optimizer/scheduler/RNG loader. The existing original data-source load is also required. Resource admission, target paths and bounded physical lifetime remain Root's separate authority; this preparation grants none.
 5. Run `compare_sharded_values.py --control CONTROL_STATE_DIR --resume RESUME_STATE_DIR --output RESULT.json --contract CONTRACT.json --contract-sha256 SHA256`. This reader consumes the new hook's `rollout_1_step_0_rank_N_sharded.json` and authenticated raw RNG files, requires all original expected tensor chunks and object keys, and compares their reported values. It returns1 for invalid/missing/different observations, or2 for equal-but-still-unqualified observations; `all_complete_state_equal` ALWAYS remains false. The old compare_step_digests.py reads a different legacy schema and MUST NOT be paired with the new producer. This closes the file/schema handoff, not full model/optimizer/device-RNG validation. Common startup differences remain visible; no blanket normalization is supplied. Existing author and independent fresh-run checkpoints are not a paired control.
@@ -26,7 +26,17 @@ Build the contract inventory using `geometry(FileSystemReader(CANONICAL_ITER0).r
 
 The value-bound observer requires `SLIME_COLD_CONTRACT` and `SLIME_COLD_CONTRACT_SHA256`, verifies actual source/input/runtime files, calls the original save-state interfaces and hashes each actual ShardedTensor with its own key/dtype/shape/offset. It writes new *_sharded.json captures and original raw RNG files. The matching new reader checks the expected original tensor chunks and object keys and raw RNG serialization, but DOES NOT certify native optimizer semantics, generator extent/API restoration or complete original state. Explicit `--allow-common-differences FILE.json` may declare only exact original args.load/save/start_rollout_id/num_rollout left/right values and a reason; no blanket args, scheduler or optimizer skip is accepted. Set ALL profile env_add values BEFORE original Ray head or explicitly forward them in train_env_vars. Only original DP1TP4 rollout1/step0 is observed. Native observer and fourrank full-reader invocation are NOT_RUN; the diagnostic tensor-key mode tests real supplied CPU captures and is never original full-state acceptance.
 
-Selected original distrib_optimizer.py line1121 allocates torch.cat while world3 + local3 + receive1 coexist: potential8P, and a previous concat may survive RHS assignment, potential9P. Actual canonical P=13,395,099,648B gives107,160,797,184B and120,555,896,832B respectively across ranks. These are potential source-derived buffer occupancy, not measured RSS or a complete host bound. Admission must additionally cover original training/offload/backups, bucket padding, tensor readback, finite-mask allocations and allocator/runtime headroom; measure target peak. The old7P estimate is incomplete and old64GiB floor cannot qualify this observer.
+The old step observer's direct `get_parameter_state_dp_zero` path can retain
+8P/9P buffers including temporary concatenations. That historical estimate is
+not the selected value-bound producer's memory estimate: actual saved args use
+`dist_ckpt_optim_fully_reshardable=False`, so original
+`_build_sharded_state_dict_metadata` selects `dp_reshardable`; original
+`get_parameter_state_dp_reshardable` returns references without gather/copies.
+The new observer still copies/hashes one actual local shard at a time and
+creates finite masks; CPU-offload/backups, original live buffers, padding,
+allocator overhead and concurrent ranks remain part of actual admission.
+Neither the old9P estimate nor a blanket64GiB floor qualifies this consumer.
+Native peak RSS and actual branch/provider must be observed.
 
 ## Withdrawn complete-state verdict
 Fresh independent normal-CLI counterexamples still make64f accept incomplete model values despite full separate inventory, unrelated optimizer metadata and tiny RNG state. Complete-state acceptance is therefore withdrawn. The step reader now reports only `reported_sections_equal`, keeps `all_complete_state_equal=false`, and returns2 for equal-but-unqualified input. The DCP reader preserves generic persisted-state equality; requested complete-original value mode returns2 and never complete=true. Errors remain failures. This is a truthful scope restriction, NOT full completeness repair, native qualification or weakened original acceptance. Exact binding of actual model value names/dtypes/shards to inventory and full original optimizer/RNG content remains an open repair.
@@ -62,3 +72,43 @@ capture JSON is insufficient. Existing original-getter peak memory estimates
 (including temporary concatenations) remain; this path is not memory-qualified
 by its small CPU tests. This is a readback observer and cannot supply performance
 results. No training math, model implementation or original argv is changed.
+
+
+## Executable capture handoff
+
+First supply a reviewed `identity.json` in the existing identity schema with
+actual source/input/runtime paths and expected hashes. It must include the
+original checkpointing, mapping, preprocessing, distributed optimizer,
+scheduler, Slime hook caller and both observer modules. Run the normal CLI:
+
+```bash
+python -m tools.cold_restore.build_capture_contract --identity identity.json \
+  --metadata /input/canonical-iter0/.metadata --metadata-sha256 CANONICAL_SHA \
+  --output /input/cold-contract.json
+```
+
+This authenticates the real522 metadata and verifies every supplied file in the
+actual consumer namespace. It does not invent target versions or provenance.
+A local CPU contract is only a utility test; it cannot be reused as a target
+contract with different paths/runtime. Pin the resulting contract SHA externally.
+Then prepare entries with `--consumer-contract-path /input/cold-contract.json`.
+The original `--train-env-vars` is explicitly merged with the four capture keys,
+retaining original signal helpers/provider values, so Ray training workers do
+not rely on a driver's late environment export. No original allocator/backup
+keys are replaced.
+
+Control and resume use identical inner `/run` paths for capture, original debug
+traces and save outputs; each unit MUST have its own owned host writer root
+mounted there. This keeps observer bookkeeping out of common-args differences.
+The control-only tracker preservation additionally checks original
+`args.start_rollout_id == 0`; a fresh resume1 never tries to reread a tracker
+from its new empty output. `common_startup_differences.json` supplies only exact
+actual load/start-rollout differences to the existing reader, with no wildcard
+or scheduler/optimizer exclusion.
+
+Hook placement is the original train_step after zero_grad and before forward
+at rollout1/step0, following original rollout generation/reference-logprob work.
+It is not the immediately-after-load boundary. Thus raw RNG at this point can
+reflect intervening original work; immediate post-load device-generator/API
+validation remains a separate unmet original obligation. No sampling replay,
+CPU fake model/optimizer, RNG reset or weakened criterion is supplied.
