@@ -91,8 +91,12 @@ def load_contract(path, expected_sha256, verify_files=False):
                     raise ValueError('Identity file mismatch: '+name)
     rt=c['identity']['runtime']
     if not rt.get('python') or not rt.get('torch'): raise ValueError('Unknown runtime version')
-    if verify_files and (rt['python']!=f'{sys.version_info.major}.{sys.version_info.minor}' or rt['torch']!=torch.__version__):
-        raise ValueError('Actual runtime differs from identity')
+    actual_runtime = {'python': f'{sys.version_info.major}.{sys.version_info.minor}',
+                      'torch': str(torch.__version__)}
+    expected_runtime = {name: rt[name] for name in ('python', 'torch')}
+    if verify_files and expected_runtime != actual_runtime:
+        raise ValueError('Actual runtime differs from identity: ' + json.dumps(
+            {'expected': expected_runtime, 'actual': actual_runtime}, sort_keys=True))
     return c
 
 
