@@ -13,6 +13,31 @@ import numpy as np
 import torch
 
 
+def class_digest(value):
+    """Identify a globally bound class without repr/address or instance coercion.
+
+    Python builtins are bound by the contract runtime. Other classes additionally
+    bind their defining module bytes; a local or rebound class is unsupported.
+    """
+    module_name, qualname = value.__module__, value.__qualname__
+    if not all(part.isidentifier() for part in (module_name + '.' + qualname).split('.')):
+        raise TypeError('Unqualified class identity: ' + module_name + '.' + qualname)
+    module = sys.modules.get(module_name)
+    resolved = module
+    for part in qualname.split('.'):
+        resolved = getattr(resolved, part, None)
+    if resolved is not value:
+        raise TypeError('Class is not its module binding: ' + module_name + '.' + qualname)
+    source = None
+    if module_name != 'builtins':
+        filename = getattr(module, '__file__', None)
+        if not filename or not Path(filename).is_file():
+            raise TypeError('Class module has no authenticated file: ' + module_name)
+        source = sha256_file(filename)
+    return {'type': 'class', 'module': module_name, 'qualname': qualname,
+            'source_sha256': source}
+
+
 def digest(value):
     if isinstance(value, torch.Tensor):
         x=value.detach().to('cpu').contiguous()
@@ -26,6 +51,7 @@ def digest(value):
         return {'type':'numpy','dtype':str(x.dtype),'shape':list(x.shape),'sha256':hashlib.sha256(memoryview(x).cast('B')).hexdigest()}
     if isinstance(value,io.BytesIO): return digest(value.getvalue())
     if isinstance(value,bytes): return {'type':'bytes','length':len(value),'sha256':hashlib.sha256(value).hexdigest()}
+    if isinstance(value,type): return class_digest(value)
     if isinstance(value,enum.Enum): return {'type':type(value).__module__+'.'+type(value).__qualname__,'value':digest(value.value)}
     if isinstance(value,(torch.dtype,torch.device)): return {'type':type(value).__name__,'value':str(value)}
     if value is None or isinstance(value,(str,bool,int)): return value

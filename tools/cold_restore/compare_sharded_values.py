@@ -58,6 +58,18 @@ def validate_digest(node, path='common_values'):
             raise ValueError(path + ': invalid array shape/hash')
         if kind == 'tensor' and node['finite'] is not True:
             raise ValueError(path + ': nonfinite tensor')
+    elif kind == 'class':
+        if (set(node) != {'type', 'module', 'qualname', 'source_sha256'}
+                or not isinstance(node['module'], str)
+                or not isinstance(node['qualname'], str)
+                or not all(part.isidentifier() for part in
+                           (node['module'] + '.' + node['qualname']).split('.'))):
+            raise ValueError(path + ': invalid class identity')
+        source = node['source_sha256']
+        if ((node['module'] == 'builtins' and source is not None)
+                or (node['module'] != 'builtins' and
+                    (not isinstance(source, str) or not re.fullmatch('[0-9a-f]{64}', source)))):
+            raise ValueError(path + ': invalid class source identity')
     elif kind == 'bytes':
         if set(node) != {'type', 'length', 'sha256'} or type(node['length']) is not int or node['length'] < 0 or not re.fullmatch('[0-9a-f]{64}', node.get('sha256', '')):
             raise ValueError(path + ': invalid bytes digest')
@@ -144,6 +156,7 @@ def _record_map(captures, expected, selected):
             key = (k, tuple(row['offsets']), tuple(row['sizes'])) if row['kind'] == 'tensor' else (k,)
             if (row['kind'] == 'tensor') != ('shape' in expected[k]):
                 raise ValueError('actual value kind differs from checkpoint: ' + k)
+            validate_digest(row['value'], 'records.' + k)
             if key in values and values[key] != row['value']:
                 raise ValueError('replica value mismatch: ' + k)
             values[key] = row['value']
