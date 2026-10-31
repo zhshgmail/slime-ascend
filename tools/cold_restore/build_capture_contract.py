@@ -7,7 +7,9 @@ by itself and never certifies native model/optimizer/RNG completeness.
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path
+import tempfile
 
 from tools.cold_restore.sharded_values import read_expected
 from tools.cold_restore.state_digest import load_contract
@@ -46,9 +48,21 @@ def main():
     # path are checked in the SAME namespace the hook will consume.
     raw = (json.dumps(contract, sort_keys=True, indent=2) + '\n').encode()
     sha = hashlib.sha256(raw).hexdigest()
-    with a.output.open('xb') as f:
-        f.write(raw)
-    load_contract(a.output, sha, verify_files=True)
+    # A rejected identity must not leave a final contract for a later command.
+    # Validate in the same directory, then publish without replacing an existing
+    # contract, retaining the original exclusive-create behavior.
+    with tempfile.NamedTemporaryFile(dir=a.output.parent,
+                                     prefix='.capture-contract-',
+                                     delete=False) as f:
+        temporary = Path(f.name)
+        try:
+            f.write(raw)
+            f.flush()
+            os.fsync(f.fileno())
+            load_contract(temporary, sha, verify_files=True)
+            os.link(temporary, a.output)
+        finally:
+            temporary.unlink()
     print(json.dumps({'contract': str(a.output.resolve()), 'sha256': sha,
         'inventory_entries': len(contract['inventory']),
         'scope': 'Source/input/runtime bytes and original metadata bound only',
