@@ -48,6 +48,10 @@ def digest(value):
         return {'type':'tensor','dtype':str(x.dtype),'shape':list(x.shape),'sha256':h.hexdigest(),'finite':finite}
     if isinstance(value,np.ndarray):
         x=np.ascontiguousarray(value)
+        if x.dtype.kind not in 'biufc':
+            raise TypeError('Unqualified NumPy dtype in actual state: ' + str(x.dtype))
+        if not bool(np.isfinite(x).all()):
+            raise ValueError('nonfinite NumPy array in actual state')
         return {'type':'numpy','dtype':str(x.dtype),'shape':list(x.shape),'sha256':hashlib.sha256(memoryview(x).cast('B')).hexdigest()}
     if isinstance(value,io.BytesIO): return digest(value.getvalue())
     if isinstance(value,bytes): return {'type':'bytes','length':len(value),'sha256':hashlib.sha256(value).hexdigest()}
