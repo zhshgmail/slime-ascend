@@ -178,6 +178,16 @@ class Geo3kEnv(BaseInteractionEnv):
                 "Your answer is wrong. You may need to reason in a different way. Don't repeat your answer unless necessary."
             )
 
+    def set_step_observer(self, observer):
+        """Optional observer of the literal objects this environment returns."""
+        self._step_observer = observer
+
+    def _return_step(self, response_text, observation, done, info, tool_record=None):
+        observer = getattr(self, "_step_observer", None)
+        if observer is not None:
+            observer(response_text, observation, done, info, tool_record)
+        return observation, done, info
+
     # Called during rollout after receiving a model response
     def step(self, response_text: str):
         self.turn += 1
@@ -191,7 +201,7 @@ class Geo3kEnv(BaseInteractionEnv):
                 "obs_str": "No tool call detected; ending the episode.",
                 "role": "tool",
             }
-            return obs, True, info
+            return self._return_step(response_text, obs, True, info)
 
         name = (tool_call.get("name") or "").strip()
         arguments = tool_call.get("arguments") or {}
@@ -205,7 +215,7 @@ class Geo3kEnv(BaseInteractionEnv):
                 "role": "tool",
             }
             info["tool_executed"] = False
-            return obs, is_final_turn, info
+            return self._return_step(response_text, obs, is_final_turn, info)
 
         raw_answer = arguments.get("answer", None)
         parsed_answer = "" if raw_answer is None else str(raw_answer)
@@ -220,7 +230,7 @@ class Geo3kEnv(BaseInteractionEnv):
             }
             info["tool_executed"] = False
             info["answer_missing"] = True
-            return obs, is_final_turn, info
+            return self._return_step(response_text, obs, is_final_turn, info)
 
         score = self._score_answer(parsed_answer)
         self.last_tool_score = score
@@ -235,7 +245,7 @@ class Geo3kEnv(BaseInteractionEnv):
             "tool_score": score,
         }
 
-        return obs, is_final_turn, info
+        return self._return_step(response_text, obs, is_final_turn, info, tool_record)
 
     def _parse_tool_payload(self, raw_json: str) -> dict[str, Any] | None:
         """Parse tool payload strictly as JSON. Malformed payloads are rejected."""

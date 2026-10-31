@@ -209,8 +209,12 @@ async def _run_inference_step(url: str, tokens: list[int], sampling_params: dict
     return response_text, new_tokens, new_log_probs, finish_type
 
 
-def _process_env_step(env: BaseInteractionEnv, response_text: str, tokenizer, processor, args, sample_metadata):
-    observation, done, _ = env.step(response_text)
+def _process_env_step(
+    env: BaseInteractionEnv, response_text: str, tokenizer, processor, args, sample_metadata, capture=None
+):
+    observation, done, info = env.step(response_text)
+    if capture is not None:
+        capture.received(observation, done, info)
     if done:
         return None, None, None, None, True
 
@@ -230,6 +234,8 @@ def _process_env_step(env: BaseInteractionEnv, response_text: str, tokenizer, pr
     if bos_id is not None and obs_prompt_ids and obs_prompt_ids[0] == bos_id:
         obs_prompt_ids = obs_prompt_ids[1:]
 
+    if capture is not None:
+        capture.encoded(next_user_message, obs_prompt_ids)
     return obs_prompt_ids, obs_image_data, obs_multimodal_inputs, obs_multimodal_train_inputs, False
 
 
@@ -311,6 +317,18 @@ async def generate(args: Any, sample: Sample, sampling_params) -> Sample:
     assert not args.partial_rollout, "Partial rollout is not supported for interaction rollouts."
 
     env, env_module, config, state, url = _initialize_resources(args, sample)
+    capture = None
+    if getattr(args, "capture_env_steps", False):
+        from examples.geo3k_vlm_multi_turn import step_capture
+
+        setter = getattr(env, "set_step_observer", None)
+        if not callable(setter):
+            raise ValueError("capture requires the environment's original step observer protocol")
+        capture = step_capture.StepCapture(
+            sample, getattr(args, "env_step_capture_identity", None),
+            [__file__, env_module.__file__, step_capture.__file__],
+        )
+        setter(capture.produced)
     sampling_params = sampling_params.copy()
     current_image_data, response_tokens, budget, multimodal_train_inputs_buffer = _prepare_start_state(
         sample, state, args, sampling_params
@@ -338,8 +356,13 @@ async def generate(args: Any, sample: Sample, sampling_params) -> Sample:
                 sample.status = Sample.Status.TRUNCATED
                 break
 
+            if capture is not None:
+                capture.begin(turn_idx, response_text, len(new_response_tokens))
+
             obs_prompt_ids, obs_image_data, obs_multimodal_inputs, obs_multimodal_train_inputs, done = (
-                _process_env_step(env, response_text, state.tokenizer, state.processor, args, sample.metadata)
+                _process_env_step(
+                    env, response_text, state.tokenizer, state.processor, args, sample.metadata, capture=capture
+                )
             )
             if done:
                 sample.status = Sample.Status.COMPLETED
@@ -347,6 +370,8 @@ async def generate(args: Any, sample: Sample, sampling_params) -> Sample:
 
             obs_log_probs = [0.0] * len(obs_prompt_ids)
             _append_to_sample(sample, response_tokens, obs_prompt_ids, obs_log_probs, loss_mask_val=0)
+            if capture is not None:
+                capture.appended(len(obs_prompt_ids))
             budget = _update_budget(budget, len(obs_prompt_ids))
 
             current_image_data = _update_multimodal_state(

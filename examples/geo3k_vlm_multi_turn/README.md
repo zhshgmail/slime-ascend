@@ -44,3 +44,36 @@ python examples/geo3k_vlm_multi_turn/run_geo3k_vlm_multi_turn.py
 - `examples/geo3k_vlm_multi_turn/geo3k_vlm_multi_turn_config.yaml`: specifies `max_turns` and `rollout_interaction_env_path` for the multi-turn rollout.
 - `examples/geo3k_vlm_multi_turn/rollout.py`: custom multi-turn rollout that calls SGLang for token generation, builds loss masks/log_probs, enforces max_turns, and early-stops on max_new_tokens.
 - `examples/geo3k_vlm_multi_turn/env_geo3k.py`: geo3k tool-calling env that parses <tool_call>{...}</tool_call>, scores math answers, and returns tool feedback per turn.
+
+### Optional original environment-step capture
+
+For a separately selected **new** trajectory, the existing custom YAML config can
+opt in without changing the default:
+
+```yaml
+capture_env_steps: true
+env_step_capture_identity:
+  input: "<exact input manifest path and SHA256>"
+  cohort: "<new run identity; never a previous captured cohort>"
+```
+
+The normal debug-rollout serializer already retains `Sample.metadata`.
+`metadata.env_step_capture` records original response text, literal producer
+observation/done/info/tool record, and the return objects received by the
+rollout dispatcher. Snapshots precede observation encoding and the `done` early
+return. Source-file hashes, caller input/cohort references, sample indices and
+zero-based turn order bind the records. Token and mask ranges are half-open;
+response tokens use mask1, appended observation tokens use mask0. A terminal
+observation is retained with null append ranges because the original dispatcher
+does not append it. Inference truncated/aborted before `env.step` creates no
+fictional environment-step record.
+
+Capture requires the selected environment's `set_step_observer` protocol and
+fails on missing/duplicate producer boundaries or replaced/dropped return
+objects. It uses native objects and the existing Torch sample serialization,
+not text reconstruction or a JSON conversion. The default does not add capture
+metadata, invoke observers or change scoring, rewards, masks or generation.
+Capture has memory/serialization overhead when enabled; it is a new candidate
+and needs original target validation. Old traces lacking these objects cannot
+be repaired by enabling the option later. Captured objects alone do not qualify
+model quality, cold restore, performance or whole-task acceptance.
