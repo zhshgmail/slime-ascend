@@ -170,34 +170,56 @@ class _VocabParallelEntropy(torch.autograd.Function):
         def mul_reduce(a, b):
             return (a * b).sum(dim=-1, keepdim=True)
 
+        # The original caller supplies [tokens, local_vocab] FP32 logits.
+        # Bound transient softmax storage without changing collective ordering:
+        # one MAX and two SUM reductions, each over every token on every rank.
+        tile_rows = max(1, (1 << 20) // vocab_parallel_logits.shape[-1])
         logits_max = vocab_parallel_logits.max(dim=-1, keepdim=True).values
         dist.all_reduce(logits_max, op=dist.ReduceOp.MAX, group=process_group)
-        normalized_vocab_parallel_logits = vocab_parallel_logits - logits_max
-        normalized_exp_logits = normalized_vocab_parallel_logits.exp_()
-        normalized_sum_exp_logits = normalized_exp_logits.sum(dim=-1, keepdim=True)
+        normalized_sum_exp_logits = torch.empty_like(logits_max)
+        for start in range(0, vocab_parallel_logits.shape[0], tile_rows):
+            end = start + tile_rows
+            exp_logits = (vocab_parallel_logits[start:end] - logits_max[start:end]).exp_()
+            normalized_sum_exp_logits[start:end] = exp_logits.sum(dim=-1, keepdim=True)
+            del exp_logits
         dist.all_reduce(normalized_sum_exp_logits, group=process_group)
-        softmax_logits = normalized_exp_logits.div_(normalized_sum_exp_logits)
-        sum_softmax_times_logits = mul_reduce(softmax_logits, vocab_parallel_logits)
+        sum_softmax_times_logits = torch.empty_like(logits_max)
+        for start in range(0, vocab_parallel_logits.shape[0], tile_rows):
+            end = start + tile_rows
+            softmax_logits = (vocab_parallel_logits[start:end] - logits_max[start:end]).exp_()
+            softmax_logits.div_(normalized_sum_exp_logits[start:end])
+            sum_softmax_times_logits[start:end] = mul_reduce(softmax_logits, vocab_parallel_logits[start:end])
+            del softmax_logits
         dist.all_reduce(sum_softmax_times_logits, group=process_group)
         entropy = logits_max + normalized_sum_exp_logits.log() - sum_softmax_times_logits
-        ctx.save_for_backward(vocab_parallel_logits, softmax_logits, sum_softmax_times_logits)
+        # Recompute probabilities in backward instead of retaining another
+        # full logits-sized tensor. Never mutate the saved caller's logits.
+        ctx.save_for_backward(vocab_parallel_logits, logits_max, normalized_sum_exp_logits, sum_softmax_times_logits)
+        ctx.tile_rows = tile_rows
         return entropy.squeeze(dim=-1)
 
     @staticmethod
     def backward(ctx, grad_output: torch.Tensor) -> torch.Tensor:
-        vocab_parallel_logits, softmax_logits, sum_softmax_times_logits = ctx.saved_tensors
-        # reuse softmax_logits as grad
-        vocab_parallel_logits.sub_(sum_softmax_times_logits)
-        softmax_logits.mul_(vocab_parallel_logits)
-        softmax_logits.mul_(grad_output.unsqueeze(dim=-1))
-        # recover vocab_parallel_logits
-        vocab_parallel_logits.add_(sum_softmax_times_logits)
-        softmax_logits.mul_(-1)
-        return softmax_logits, None
+        vocab_parallel_logits, logits_max, normalized_sum_exp_logits, sum_softmax_times_logits = ctx.saved_tensors
+        grad_logits = torch.empty_like(vocab_parallel_logits)
+        for start in range(0, vocab_parallel_logits.shape[0], ctx.tile_rows):
+            end = start + ctx.tile_rows
+            grad_tile = grad_logits[start:end]
+            torch.sub(vocab_parallel_logits[start:end], logits_max[start:end], out=grad_tile)
+            grad_tile.exp_().div_(normalized_sum_exp_logits[start:end])
+            centered_logits = sum_softmax_times_logits[start:end] - vocab_parallel_logits[start:end]
+            grad_tile.mul_(centered_logits).mul_(grad_output[start:end].unsqueeze(dim=-1))
+            del centered_logits
+        return grad_logits, None
+
 
 
 def compute_entropy_from_logits(logits: torch.Tensor, process_group) -> torch.Tensor:
-    return _VocabParallelEntropy.apply(logits, process_group)
+    # Keep the public last-dimension entropy API, including a scalar output
+    # for a 1D vocabulary vector. The tiled kernel operates on token rows.
+    output_shape = logits.shape[:-1]
+    row_logits = logits.reshape(-1, logits.shape[-1])
+    return _VocabParallelEntropy.apply(row_logits, process_group).reshape(output_shape)
 
 
 class _VocabParallelReverseKL(torch.autograd.Function):
@@ -1021,8 +1043,8 @@ def calculate_log_probs_and_entropy(logits, tokens, tp_group, with_entropy: bool
             if with_entropy:
                 entropys = []
                 for logits_chunk in logits_chunks:
-                    entropy_input = logits_chunk.clone()
-                    entropys.append(compute_entropy_from_logits(entropy_input, tp_group))
+                    # Entropy recomputes its backward probabilities and never mutates logits.
+                    entropys.append(compute_entropy_from_logits(logits_chunk, tp_group))
                 entropy = torch.cat(entropys, dim=0)
 
             log_probs = []
@@ -1032,8 +1054,8 @@ def calculate_log_probs_and_entropy(logits, tokens, tp_group, with_entropy: bool
             log_prob = torch.cat(log_probs, dim=0)
         else:
             if with_entropy:
-                entropy_input = logits.clone()
-                entropy = compute_entropy_from_logits(entropy_input, tp_group)
+                # Cross entropy below retains its independent mutable clone.
+                entropy = compute_entropy_from_logits(logits, tp_group)
 
             log_prob = compute_log_probs(logits.clone(), tokens, tp_group)
     else:
